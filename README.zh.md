@@ -23,10 +23,13 @@ Neural ──► Symbolic       Neural ──► Symbolic ──► Neural ─�
 ## 快速开始
 
 ```bash
-# 安装
+# 安装 uv（如果尚未安装）
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# 克隆并安装依赖
 git clone https://github.com/jxtse/nestlet.git
 cd nestlet
-pip install -e .
+uv sync
 
 # 配置
 cp config.example.yaml config.yaml
@@ -36,7 +39,7 @@ cp config.example.yaml config.yaml
 export OPENAI_API_KEY="your-api-key"
 
 # 运行
-python main.py
+uv run python main.py
 ```
 
 ## 使用方式
@@ -44,13 +47,13 @@ python main.py
 ### 交互模式
 
 ```bash
-python main.py
+uv run python main.py
 ```
 
 ### 单次任务
 
 ```bash
-python main.py --task "计算 100 的阶乘"
+uv run python main.py --task "计算 100 的阶乘"
 ```
 
 ### 作为库使用
@@ -128,13 +131,13 @@ export OPENAI_API_KEY=sk-...
 
 ```bash
 # 安装开发依赖
-pip install -e ".[dev]"
+uv sync --extra dev
 
 # 运行测试
-pytest tests/
+uv run pytest tests/
 
 # 格式化 & 检查
-black . && ruff check .
+uv run black . && uv run ruff check .
 ```
 
 ## 致谢

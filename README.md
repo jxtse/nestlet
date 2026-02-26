@@ -23,10 +23,13 @@ Neural ──► Symbolic         Neural ──► Symbolic ──► Neural ─
 ## Quick Start
 
 ```bash
-# Install
+# Install uv (if not already installed)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Clone and install
 git clone https://github.com/jxtse/nestlet.git
 cd nestlet
-pip install -e .
+uv sync
 
 # Configure
 cp config.example.yaml config.yaml
@@ -36,7 +39,7 @@ cp config.example.yaml config.yaml
 export OPENAI_API_KEY="your-api-key"
 
 # Run
-python main.py
+uv run python main.py
 ```
 
 ## Usage
@@ -44,13 +47,13 @@ python main.py
 ### Interactive Mode
 
 ```bash
-python main.py
+uv run python main.py
 ```
 
 ### Single Task
 
 ```bash
-python main.py --task "Calculate the factorial of 100"
+uv run python main.py --task "Calculate the factorial of 100"
 ```
 
 ### As a Library
@@ -128,13 +131,13 @@ export OPENAI_API_KEY=sk-...
 
 ```bash
 # Install dev dependencies
-pip install -e ".[dev]"
+uv sync --extra dev
 
 # Run tests
-pytest tests/
+uv run pytest tests/
 
 # Format & lint
-black . && ruff check .
+uv run black . && uv run ruff check .
 ```
 
 ## Acknowledgments

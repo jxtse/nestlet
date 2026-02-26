@@ -10,9 +10,13 @@ Thank you for your interest in contributing to Nestlet! This document provides g
    git clone https://github.com/jxtse/nestlet.git
    cd nestlet
    ```
-3. Install development dependencies:
+3. Install [uv](https://github.com/astral-sh/uv) (if not already installed):
    ```bash
-   pip install -e ".[dev]"
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+   ```
+4. Install development dependencies:
+   ```bash
+   uv sync --extra dev
    ```
 
 ## Development Workflow
@@ -29,19 +33,19 @@ Before submitting a PR, please run:
 
 ```bash
 # Format code
-black .
+uv run black .
 
 # Lint
-ruff check .
+uv run ruff check .
 
 # Type check
-mypy inception/
+uv run mypy inception/
 ```
 
 ### Running Tests
 
 ```bash
-pytest tests/
+uv run pytest tests/
 ```
 
 ### Commit Messages
