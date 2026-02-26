@@ -1,0 +1,64 @@
+# Nestlet Configuration Example
+# Copy this file to config.yaml and customize for your environment
+
+provider:
+  type: openai              # openai | anthropic | azure
+  model: gpt-4o             # Model name
+  # base_url: https://api.openai.com/v1  # Optional: custom API endpoint
+  # api_key: sk-...         # Optional: set here or use environment variable
+  temperature: 0.7
+  max_tokens: 4096
+  timeout: 60.0
+  max_retries: 3
+
+execution:
+  mode: sandbox             # sandbox (restricted) | trusted (full access)
+  timeout: 30               # Code execution timeout (seconds)
+  # Module restrictions (sandbox mode only)
+  allowed_modules:
+    - math
+    - statistics
+    - collections
+    - itertools
+    - functools
+    - datetime
+    - json
+    - re
+    - string
+    - textwrap
+    - os
+    - sys
+    - pathlib
+    - shutil
+    - glob
+    - fnmatch
+    - numpy
+    - pandas
+    - scipy
+    - openpyxl
+    - xlrd
+    - olefile
+    - importlib
+    - platform
+    - io
+    - csv
+    - pickle
+  blocked_modules:
+    - socket
+    - requests
+    - urllib
+    - http
+    - ftplib
+    - smtplib
+    - telnetlib
+
+memory:
+  max_conversation_turns: 50
+
+web_search:
+  enabled: true
+  backend: tavily           # tavily | duckduckgo
+  # tavily_api_key: ...     # Set via TAVILY_API_KEY environment variable
+  default_language: en
+  default_max_results: 5
+  deep_search_max_results: 10
