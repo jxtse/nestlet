@@ -120,14 +120,6 @@ export INCEPTION_MODEL=gpt-5.2
 export OPENAI_API_KEY=sk-...
 ```
 
-## Supported Providers
-
-- OpenAI (GPT-4, GPT-5, etc.)
-- Anthropic (Claude 3.5, Claude 4)
-- OpenRouter (access 100+ models)
-- Azure OpenAI
-- Any OpenAI-compatible API
-
 ## Development
 
 ```bash

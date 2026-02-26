@@ -120,14 +120,6 @@ export INCEPTION_MODEL=gpt-5.2
 export OPENAI_API_KEY=sk-...
 ```
 
-## 支持的 LLM 提供商
-
-- OpenAI (GPT-4, GPT-5 等)
-- Anthropic (Claude 3.5, Claude 4)
-- OpenRouter (访问 100+ 模型)
-- Azure OpenAI
-- 任何 OpenAI 兼容 API
-
 ## 开发
 
 ```bash
