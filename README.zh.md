@@ -103,8 +103,8 @@ cp config.example.yaml config.yaml
 
 ```yaml
 provider:
-  type: openai          # openai | anthropic | azure
-  model: gpt-4o
+  type: openai          # openai | anthropic | azure | openrouter
+  model: gpt-5.2
   temperature: 0.7
 
 execution:
@@ -116,14 +116,15 @@ execution:
 
 ```bash
 export INCEPTION_PROVIDER=openai
-export INCEPTION_MODEL=gpt-4o
+export INCEPTION_MODEL=gpt-5.2
 export OPENAI_API_KEY=sk-...
 ```
 
 ## 支持的 LLM 提供商
 
-- OpenAI (GPT-4, GPT-4o 等)
+- OpenAI (GPT-4, GPT-5 等)
 - Anthropic (Claude 3.5, Claude 4)
+- OpenRouter (访问 100+ 模型)
 - Azure OpenAI
 - 任何 OpenAI 兼容 API
 

@@ -2,8 +2,8 @@
 # Copy this file to config.yaml and customize for your environment
 
 provider:
-  type: openai              # openai | anthropic | azure
-  model: gpt-4o             # Model name
+  type: openai              # openai | anthropic | azure | openrouter
+  model: gpt-5.2            # Model name
   # base_url: https://api.openai.com/v1  # Optional: custom API endpoint
   # api_key: sk-...         # Optional: set here or use environment variable
   temperature: 0.7

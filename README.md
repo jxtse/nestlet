@@ -103,8 +103,8 @@ cp config.example.yaml config.yaml
 
 ```yaml
 provider:
-  type: openai          # openai | anthropic | azure
-  model: gpt-4o
+  type: openai          # openai | anthropic | azure | openrouter
+  model: gpt-5.2
   temperature: 0.7
 
 execution:
@@ -116,14 +116,15 @@ Or use environment variables:
 
 ```bash
 export INCEPTION_PROVIDER=openai
-export INCEPTION_MODEL=gpt-4o
+export INCEPTION_MODEL=gpt-5.2
 export OPENAI_API_KEY=sk-...
 ```
 
 ## Supported Providers
 
-- OpenAI (GPT-4, GPT-4o, etc.)
+- OpenAI (GPT-4, GPT-5, etc.)
 - Anthropic (Claude 3.5, Claude 4)
+- OpenRouter (access 100+ models)
 - Azure OpenAI
 - Any OpenAI-compatible API
 
