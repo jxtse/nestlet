@@ -469,17 +469,33 @@ class ToolFactory:
         return parameters
 
     def _run_test(self, tool: Tool, test_case: Dict[str, Any]) -> TestResult:
-        """Run a single test case."""
+        """Run a single test case.
+
+        Works whether or not the caller is already inside a running event loop
+        (e.g. when invoked from an async agent). When there is no running loop,
+        falls back to ``asyncio.run``.
+        """
         import asyncio
 
         inputs = test_case.get("inputs", {})
         expected = test_case.get("expected")
 
         try:
-            # Run synchronously for testing
-            loop = asyncio.new_event_loop()
-            result = loop.run_until_complete(tool.execute(**inputs))
-            loop.close()
+            try:
+                running_loop = asyncio.get_running_loop()
+            except RuntimeError:
+                running_loop = None
+
+            if running_loop is None:
+                result = asyncio.run(tool.execute(**inputs))
+            else:
+                # Already inside an event loop — run the coroutine on a worker
+                # thread so we can synchronously wait for it without deadlocking.
+                import concurrent.futures
+
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                    future = pool.submit(asyncio.run, tool.execute(**inputs))
+                    result = future.result()
 
             if not result.success:
                 return TestResult(passed=False, error=result.error)

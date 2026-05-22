@@ -86,21 +86,18 @@ class OpenAIProvider(BaseProvider):
 
     def _convert_messages(self, messages: List[Message]) -> List[Dict[str, Any]]:
         """Convert messages to OpenAI format."""
-        result = []
-        for msg in messages:
-            msg_dict = msg.to_dict()
-            # Handle tool_calls format
-            if msg.tool_calls:
-                msg_dict["tool_calls"] = [
-                    {
-                        "id": tc.id,
-                        "type": "function",
-                        "function": {"name": tc.name, "arguments": json.dumps(tc.arguments)},
-                    }
-                    for tc in msg.tool_calls
-                ]
-            result.append(msg_dict)
-        return result
+        return [msg.to_dict() for msg in messages]
+
+    def _max_tokens_param_name(self) -> str:
+        """Choose the right token-budget param for the active model.
+
+        OpenAI's gpt-5*, o1*, and o3* families reject ``max_tokens`` and require
+        ``max_completion_tokens``. Older models only accept ``max_tokens``.
+        """
+        model = (self.model_name or "").lower()
+        if model.startswith(("gpt-5", "o1", "o3", "o4")):
+            return "max_completion_tokens"
+        return "max_tokens"
 
     def _parse_tool_calls(self, tool_calls: Any) -> List[ToolCall]:
         """Parse tool calls from OpenAI response."""
@@ -142,8 +139,10 @@ class OpenAIProvider(BaseProvider):
             "model": self.model_name,
             "messages": self._convert_messages(messages),
             "temperature": kwargs.get("temperature", self.config.temperature),
-            "max_tokens": kwargs.get("max_tokens", self.config.max_tokens),
         }
+
+        # gpt-5* / o1 / o3 require ``max_completion_tokens`` instead of ``max_tokens``.
+        params[self._max_tokens_param_name()] = kwargs.get("max_tokens", self.config.max_tokens)
 
         # Add tools if provided
         if tools:
