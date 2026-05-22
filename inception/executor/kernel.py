@@ -8,6 +8,7 @@ Based on TaskWeaver's kernel design.
 from __future__ import annotations
 
 import asyncio
+import builtins
 import logging
 import sys
 import traceback
@@ -125,6 +126,10 @@ except ImportError:
         if self._initialized:
             return
 
+        # Mark as initialized BEFORE running default imports so that the nested
+        # execute() calls below don't try to re-enter initialize().
+        self._initialized = True
+
         # Set up safe builtins
         self._namespace["__builtins__"] = self._create_safe_builtins()
 
@@ -132,13 +137,10 @@ except ImportError:
         await self.execute(self.DEFAULT_IMPORTS, capture_result=False)
         await self.execute(self.OPTIONAL_IMPORTS, capture_result=False)
 
-        self._initialized = True
         logger.info("Python kernel initialized")
 
     def _create_safe_builtins(self) -> Dict[str, Any]:
         """Create a restricted set of builtins."""
-        import builtins
-
         # Start with all builtins
         safe_builtins = dict(vars(builtins))
 
@@ -175,8 +177,11 @@ except ImportError:
         if self._allowed_modules and top_level not in self._allowed_modules:
             raise ImportError(f"Module '{name}' is not in the allowed list")
 
-        # Use the real __import__
-        return __builtins__["__import__"](name, globals, locals, fromlist, level)
+        # Use the real __import__ from the builtins module. Note: at module
+        # top-level __builtins__ is sometimes a module and sometimes a dict
+        # depending on how the module was loaded, so accessing it directly is
+        # unreliable. Use the `builtins` module instead.
+        return builtins.__import__(name, globals, locals, fromlist, level)
 
     async def execute(
         self,
@@ -195,7 +200,7 @@ except ImportError:
         Returns:
             ExecutionResult with outputs and any errors
         """
-        if not self._initialized and "import" not in code[:50]:
+        if not self._initialized:
             await self.initialize()
 
         timeout = timeout or self._timeout

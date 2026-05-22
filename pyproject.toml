@@ -55,7 +55,7 @@ search = [
 ]
 
 [project.scripts]
-nestlet = "inception.main:main"
+nestlet = "inception.cli:main"
 
 [build-system]
 requires = ["hatchling"]

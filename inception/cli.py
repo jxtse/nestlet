@@ -8,6 +8,7 @@ import asyncio
 import logging
 import sys
 from pathlib import Path
+from typing import Optional
 
 from rich.console import Console
 from rich.markdown import Markdown
@@ -152,20 +153,20 @@ def main() -> int:
     else:
         logging.getLogger().setLevel(logging.WARNING)
 
-    # Load settings
-    if args.config and args.config.exists():
-        settings = Settings.from_yaml(args.config)
-    else:
-        settings = Settings.from_env()
-
-    settings.verbose = args.verbose
-    settings.debug = args.debug
-
-    # Create agent
-    agent = HybridAgent(settings=settings)
-
-    # Run
+    agent: Optional[HybridAgent] = None
     try:
+        # Load settings
+        if args.config and args.config.exists():
+            settings = Settings.from_yaml(args.config)
+        else:
+            settings = Settings.from_env()
+
+        settings.verbose = args.verbose
+        settings.debug = args.debug
+
+        # Create agent
+        agent = HybridAgent(settings=settings)
+
         if args.task:
             asyncio.run(run_task(agent, args.task))
         else:
@@ -179,8 +180,9 @@ def main() -> int:
         console.print(f"\n[red bold]Fatal error:[/red bold] {e}")
         return 1
     finally:
-        # Ensure tools are saved on exit
-        agent.shutdown()
+        # Ensure tools are saved on exit (only if agent was created)
+        if agent is not None:
+            agent.shutdown()
 
 
 if __name__ == "__main__":

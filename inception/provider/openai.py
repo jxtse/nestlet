@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from openai import AsyncAzureOpenAI, AsyncOpenAI
@@ -55,13 +56,21 @@ class OpenAIProvider(BaseProvider):
                 max_retries=self.config.max_retries,
                 timeout=self.config.timeout,
             )
-        else:
-            return AsyncOpenAI(
-                api_key=self.config.api_key,
-                base_url=self.config.base_url,
-                max_retries=self.config.max_retries,
-                timeout=self.config.timeout,
-            )
+
+        # For OpenRouter, default to its API endpoint and key env var
+        # if the user didn't explicitly set them.
+        base_url = self.config.base_url
+        api_key = self.config.api_key
+        if self.config.type == ProviderType.OPENROUTER:
+            base_url = base_url or "https://openrouter.ai/api/v1"
+            api_key = api_key or os.getenv("OPENROUTER_API_KEY")
+
+        return AsyncOpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            max_retries=self.config.max_retries,
+            timeout=self.config.timeout,
+        )
 
     @property
     def model_name(self) -> str:

@@ -39,7 +39,7 @@ cp config.example.yaml config.yaml
 export OPENAI_API_KEY="your-api-key"
 
 # Run
-uv run python main.py
+uv run nestlet
 ```
 
 ## Usage
@@ -47,13 +47,13 @@ uv run python main.py
 ### Interactive Mode
 
 ```bash
-uv run python main.py
+uv run nestlet
 ```
 
 ### Single Task
 
 ```bash
-uv run python main.py --task "Calculate the factorial of 100"
+uv run nestlet --task "Calculate the factorial of 100"
 ```
 
 ### As a Library
@@ -104,7 +104,7 @@ cp config.example.yaml config.yaml
 ```yaml
 provider:
   type: openai          # openai | anthropic | azure | openrouter
-  model: gpt-5.2
+  model: gpt-4o-mini
   temperature: 0.7
 
 execution:
@@ -116,7 +116,7 @@ Or use environment variables:
 
 ```bash
 export INCEPTION_PROVIDER=openai
-export INCEPTION_MODEL=gpt-5.2
+export INCEPTION_MODEL=gpt-4o-mini
 export OPENAI_API_KEY=sk-...
 ```
 

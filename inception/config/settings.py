@@ -21,6 +21,7 @@ class ProviderType(str, Enum):
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
     AZURE = "azure"
+    OPENROUTER = "openrouter"
 
 
 class ExecutionMode(str, Enum):
@@ -34,7 +35,7 @@ class ProviderConfig:
     """LLM provider configuration."""
     type: ProviderType
     api_key: Optional[str] = None
-    model: str = "gpt-4o"
+    model: str = "gpt-4o-mini"
     base_url: Optional[str] = None
     # Azure-specific
     azure_endpoint: Optional[str] = None
@@ -56,7 +57,7 @@ class ProviderConfig:
         return cls(
             type=provider_type,
             api_key=data.get("api_key") or os.getenv(f"{provider_type.value.upper()}_API_KEY"),
-            model=data.get("model", "gpt-4o"),
+            model=data.get("model", "gpt-4o-mini"),
             base_url=data.get("base_url"),
             azure_endpoint=data.get("azure_endpoint"),
             azure_deployment=data.get("azure_deployment"),
@@ -231,7 +232,7 @@ class Settings:
         provider_config = ProviderConfig(
             type=ProviderType(provider_type),
             api_key=os.getenv(f"{provider_type.upper()}_API_KEY"),
-            model=os.getenv("INCEPTION_MODEL", "gpt-4o"),
+            model=os.getenv("INCEPTION_MODEL", "gpt-4o-mini"),
             base_url=os.getenv("INCEPTION_BASE_URL"),
             azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
             azure_deployment=os.getenv("AZURE_OPENAI_DEPLOYMENT"),

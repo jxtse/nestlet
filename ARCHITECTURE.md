@@ -39,13 +39,13 @@ pip install -e ".[azure]"  # Azure OpenAI support
 ### Interactive Mode
 
 ```bash
-python main.py
+python -m inception.cli
 ```
 
 ### Run a Single Task
 
 ```bash
-python main.py --task "Calculate the factorial of 100"
+python -m inception.cli --task "Calculate the factorial of 100"
 ```
 
 ### Configuration File
@@ -55,7 +55,7 @@ Create a `config.yaml`:
 ```yaml
 provider:
   type: openai
-  model: gpt-5.2
+  model: gpt-4o-mini
   temperature: 0.7
 
 execution:
@@ -69,7 +69,7 @@ memory:
 Then run:
 
 ```bash
-python main.py --config config.yaml
+python -m inception.cli --config config.yaml
 ```
 
 ---
@@ -93,7 +93,7 @@ Inception/
 ├── tests/                   # Test files
 ├── plugins/                 # Plugin directory (for dynamically generated tools)
 ├── examples/                # Example code
-├── main.py                  # Main entry point
+├── inception/cli.py                  # Main entry point
 ├── config.yaml              # Configuration file
 └── pyproject.toml           # Project dependencies
 ```
@@ -407,7 +407,7 @@ Where P=principal, r=rate, n=compounds per year, t=years
 | Option | Description | Default |
 |--------|-------------|---------|
 | `type` | Provider type (openai, anthropic, azure) | openai |
-| `model` | Model name | gpt-4o |
+| `model` | Model name | gpt-4o-mini |
 | `api_key` | API key (or use env var) | - |
 | `temperature` | Generation temperature | 0.7 |
 | `max_tokens` | Max tokens per response | 4096 |

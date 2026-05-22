@@ -26,11 +26,12 @@ from inception.agent.base import (
     Context,
     ThinkResult,
 )
-from inception.config.settings import Settings
+from inception.config.settings import ProviderType, Settings
 from inception.executor.kernel import PythonKernel
 from inception.executor.state import StateManager
 from inception.memory.conversation import ConversationMemory
 from inception.memory.working_memory import MemoryItemType, WorkingMemory
+from inception.provider.anthropic import AnthropicProvider
 from inception.provider.base import BaseProvider, Message, ToolCall
 from inception.provider.openai import OpenAIProvider
 from inception.tool.base import Tool, ToolResult
@@ -172,7 +173,7 @@ class HybridAgent(BaseAgent):
         if provider:
             self._provider = provider
         else:
-            self._provider = OpenAIProvider(self._settings.provider)
+            self._provider = self._create_provider(self._settings)
 
         # Initialize kernel with allowed/blocked modules from settings
         self._kernel = kernel or PythonKernel(
@@ -232,6 +233,15 @@ class HybridAgent(BaseAgent):
     def description(self) -> str:
         return "Neuro-symbolic agent combining LLM reasoning with code execution"
 
+    @staticmethod
+    def _create_provider(settings: Settings) -> BaseProvider:
+        """Instantiate the LLM provider matching the configured type."""
+        provider_type = settings.provider.type
+        if provider_type == ProviderType.ANTHROPIC:
+            return AnthropicProvider(settings.provider)
+        # OpenAI, Azure, and OpenRouter all use the OpenAI-compatible client.
+        return OpenAIProvider(settings.provider)
+
     async def initialize(self) -> None:
         """Initialize the agent components."""
         if self._initialized:
@@ -247,6 +257,7 @@ class HybridAgent(BaseAgent):
             self._registry,
             kernel=self._kernel,
             provider=self._provider,
+            workspace=self._settings.execution.workspace_dir,
             settings=self._settings,
         )
 

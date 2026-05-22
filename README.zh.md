@@ -39,7 +39,7 @@ cp config.example.yaml config.yaml
 export OPENAI_API_KEY="your-api-key"
 
 # 运行
-uv run python main.py
+uv run nestlet
 ```
 
 ## 使用方式
@@ -47,13 +47,13 @@ uv run python main.py
 ### 交互模式
 
 ```bash
-uv run python main.py
+uv run nestlet
 ```
 
 ### 单次任务
 
 ```bash
-uv run python main.py --task "计算 100 的阶乘"
+uv run nestlet --task "计算 100 的阶乘"
 ```
 
 ### 作为库使用
@@ -104,7 +104,7 @@ cp config.example.yaml config.yaml
 ```yaml
 provider:
   type: openai          # openai | anthropic | azure | openrouter
-  model: gpt-5.2
+  model: gpt-4o-mini
   temperature: 0.7
 
 execution:
@@ -116,7 +116,7 @@ execution:
 
 ```bash
 export INCEPTION_PROVIDER=openai
-export INCEPTION_MODEL=gpt-5.2
+export INCEPTION_MODEL=gpt-4o-mini
 export OPENAI_API_KEY=sk-...
 ```
 
