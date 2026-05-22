@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import Any, AsyncIterator, Awaitable, Callable, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -245,6 +245,52 @@ class CompletionResponse(BaseModel):
         return len(self.tool_calls) > 0
 
 
+# ─── Streaming events ──────────────────────────────────────────────────────
+# Providers that opt into streaming (`complete(stream=True)`) return an
+# AsyncIterator of these events. The shapes mirror the Substrate / OpenAI Chat
+# Completions SSE deltas: content tokens, reasoning summary tokens, and
+# index-keyed tool-call argument deltas. UsageEvent / DoneEvent close out the
+# stream.
+
+
+class ContentDelta(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: Literal["content"] = "content"
+    text: str
+
+
+class ReasoningDelta(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: Literal["reasoning"] = "reasoning"
+    text: str
+
+
+class ToolCallDelta(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: Literal["tool_call_delta"] = "tool_call_delta"
+    index: int
+    id: Optional[str] = None
+    name: Optional[str] = None
+    arguments_chunk: Optional[str] = None
+
+
+class UsageEvent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: Literal["usage"] = "usage"
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    reasoning_tokens: int = 0
+
+
+class DoneEvent(BaseModel):
+    model_config = ConfigDict(extra="ignore", arbitrary_types_allowed=True)
+    type: Literal["done"] = "done"
+    response: CompletionResponse
+
+
+StreamEvent = Union[ContentDelta, ReasoningDelta, ToolCallDelta, UsageEvent, DoneEvent]
+
+
 class BaseProvider(ABC):
     """
     Abstract base class for LLM providers.
@@ -263,7 +309,7 @@ class BaseProvider(ABC):
         tools: Optional[List[ToolDefinition]] = None,
         tool_choice: Optional[str] = None,
         **kwargs: Any,
-    ) -> CompletionResponse:
+    ) -> Union[CompletionResponse, AsyncIterator[StreamEvent]]:
         """
         Generate a completion for the given messages.
 
@@ -271,10 +317,13 @@ class BaseProvider(ABC):
             messages: Conversation history
             tools: Available tools for the model to call
             tool_choice: "auto", "none", or specific tool name
-            **kwargs: Provider-specific options
+            **kwargs: Provider-specific options. Pass ``stream=True`` to get
+                back an ``AsyncIterator[StreamEvent]`` instead of a single
+                ``CompletionResponse``.
 
         Returns:
-            CompletionResponse with content and/or tool calls
+            ``CompletionResponse`` when ``stream`` is false / unset.
+            ``AsyncIterator[StreamEvent]`` when ``stream=True``.
         """
         pass
 

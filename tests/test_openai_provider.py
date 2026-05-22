@@ -7,7 +7,17 @@ import json
 import pytest
 
 from inception.config.settings import ProviderConfig, ProviderType
-from inception.provider.base import ImageContent, Message, ToolCall, ToolDefinition, ToolResult
+from inception.provider.base import (
+    ContentDelta,
+    DoneEvent,
+    ImageContent,
+    Message,
+    ToolCall,
+    ToolCallDelta,
+    ToolDefinition,
+    ToolResult,
+    UsageEvent,
+)
 
 
 @pytest.fixture
@@ -246,21 +256,45 @@ async def test_responses_tool_loop_refeeds_raw_output(make_provider, monkeypatch
         output_tokens = 0
         total_tokens = 0
 
-    class _StubResponse:
+    class _StubFinalResponse:
         def __init__(self, output):
             self.output = output
             self.usage = _StubUsage()
 
-    responses_to_return = [
-        _StubResponse([reasoning_item, function_call_item]),
-        _StubResponse([final_message_item]),
+    class _StubStream:
+        def __init__(self, final_output):
+            self._final = _StubFinalResponse(final_output)
+
+        def __aiter__(self):
+            async def _aiter():
+                if False:
+                    yield  # never yields events — final assembled via get_final_response
+
+            return _aiter()
+
+        async def get_final_response(self):
+            return self._final
+
+    class _StubStreamCtx:
+        def __init__(self, final_output):
+            self._stream = _StubStream(final_output)
+
+        async def __aenter__(self):
+            return self._stream
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    outputs_to_return = [
+        [reasoning_item, function_call_item],
+        [final_message_item],
     ]
 
-    async def fake_create(**params):
+    def fake_stream(**params):
         calls.append(params)
-        return responses_to_return.pop(0)
+        return _StubStreamCtx(outputs_to_return.pop(0))
 
-    monkeypatch.setattr(p._client.responses, "create", fake_create)
+    monkeypatch.setattr(p._client.responses, "stream", fake_stream)
 
     async def tool_executor(tc: ToolCall) -> ToolResult:
         return ToolResult(tool_call_id=tc.id, name=tc.name, result="x-result")
@@ -295,3 +329,320 @@ async def test_responses_tool_loop_refeeds_raw_output(make_provider, monkeypatch
         if isinstance(it, dict) and it.get("type") == "function_call_output"
     )
     assert reasoning_idx < output_idx
+
+
+# ----------------------------------------------------------------- Chat streaming
+
+
+class _ChatDelta:
+    def __init__(self, content=None, tool_calls=None, reasoning_content=None):
+        self.content = content
+        self.tool_calls = tool_calls
+        self.reasoning_content = reasoning_content
+        self.reasoning = None
+        self.cot_summary = None
+
+
+class _ChatChoice:
+    def __init__(self, delta, finish_reason=None):
+        self.delta = delta
+        self.finish_reason = finish_reason
+
+
+class _ChatChunk:
+    def __init__(self, choices=None, usage=None):
+        self.choices = choices or []
+        self.usage = usage
+
+
+class _ChatUsage:
+    def __init__(self, p, c, r=0):
+        self.prompt_tokens = p
+        self.completion_tokens = c
+
+        class _Det:
+            reasoning_tokens = r
+
+        self.completion_tokens_details = _Det()
+
+
+class _ChatToolDelta:
+    def __init__(self, index, id=None, name=None, args=None):
+        self.index = index
+        self.id = id
+
+        class _Fn:
+            pass
+
+        fn = _Fn()
+        fn.name = name
+        fn.arguments = args
+        self.function = fn
+
+
+async def _async_iter(items):
+    for item in items:
+        yield item
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_yields_content_and_tool_deltas(make_provider, monkeypatch):
+    p = make_provider("gpt-4o-mini")
+
+    chunks = [
+        _ChatChunk(choices=[_ChatChoice(_ChatDelta(content="Hel"))]),
+        _ChatChunk(choices=[_ChatChoice(_ChatDelta(content="lo"))]),
+        _ChatChunk(
+            choices=[
+                _ChatChoice(
+                    _ChatDelta(
+                        tool_calls=[_ChatToolDelta(0, id="call_a", name="search", args='{"q":')]
+                    )
+                )
+            ]
+        ),
+        _ChatChunk(
+            choices=[
+                _ChatChoice(
+                    _ChatDelta(tool_calls=[_ChatToolDelta(0, args='"cats"}')]),
+                    finish_reason="tool_calls",
+                )
+            ]
+        ),
+        _ChatChunk(usage=_ChatUsage(10, 5, 0)),
+    ]
+
+    async def fake_create(**params):
+        assert params["stream"] is True
+        return _async_iter(chunks)
+
+    monkeypatch.setattr(p._client.chat.completions, "create", fake_create)
+
+    events = []
+    iterator = await p.complete(
+        messages=[Message.user("hi")],
+        tools=[ToolDefinition(name="search", description="", parameters={})],
+        stream=True,
+    )
+    async for ev in iterator:
+        events.append(ev)
+
+    content_events = [e for e in events if isinstance(e, ContentDelta)]
+    tc_events = [e for e in events if isinstance(e, ToolCallDelta)]
+    usage_events = [e for e in events if isinstance(e, UsageEvent)]
+    done_events = [e for e in events if isinstance(e, DoneEvent)]
+
+    assert [e.text for e in content_events] == ["Hel", "lo"]
+    assert len(tc_events) == 2
+    assert usage_events and usage_events[0].prompt_tokens == 10
+    assert done_events
+    final = done_events[0].response
+    assert final.content == "Hello"
+    assert final.has_tool_calls
+    assert final.tool_calls[0].name == "search"
+    assert final.tool_calls[0].arguments == {"q": "cats"}
+
+
+@pytest.mark.asyncio
+async def test_chat_non_stream_uses_stream_internally(make_provider, monkeypatch):
+    """Confirm the default complete() still streams under the hood (Substrate-safe)."""
+    p = make_provider("gpt-4o-mini")
+
+    chunks = [
+        _ChatChunk(choices=[_ChatChoice(_ChatDelta(content="ok"), finish_reason="stop")]),
+        _ChatChunk(usage=_ChatUsage(1, 1)),
+    ]
+    saw_stream_true = []
+
+    async def fake_create(**params):
+        saw_stream_true.append(params.get("stream") is True)
+        return _async_iter(chunks)
+
+    monkeypatch.setattr(p._client.chat.completions, "create", fake_create)
+
+    response = await p.complete(messages=[Message.user("hi")])
+    assert saw_stream_true == [True]
+    assert response.content == "ok"
+
+
+@pytest.mark.asyncio
+async def test_azure_chat_stream_omits_stream_options(monkeypatch):
+    """Older Azure API versions reject stream_options — make sure we don't send it."""
+    for var in (
+        "ALL_PROXY",
+        "HTTPS_PROXY",
+        "HTTP_PROXY",
+        "all_proxy",
+        "https_proxy",
+        "http_proxy",
+    ):
+        monkeypatch.delenv(var, raising=False)
+
+    from inception.provider.openai import OpenAIProvider
+
+    cfg = ProviderConfig(
+        type=ProviderType.AZURE,
+        model="gpt-4o-mini",
+        api_key="sk-test",
+        azure_endpoint="https://example.openai.azure.com",
+        azure_deployment="dep",
+    )
+    p = OpenAIProvider(cfg)
+
+    chunks = [
+        _ChatChunk(choices=[_ChatChoice(_ChatDelta(content="ok"), finish_reason="stop")]),
+    ]
+    captured = {}
+
+    async def fake_create(**params):
+        captured.update(params)
+        return _async_iter(chunks)
+
+    monkeypatch.setattr(p._client.chat.completions, "create", fake_create)
+
+    response = await p.complete(messages=[Message.user("hi")])
+    assert captured["stream"] is True
+    assert "stream_options" not in captured
+    assert response.content == "ok"
+
+
+# ----------------------------------------------------------- Responses streaming
+
+
+class _RespEvent:
+    def __init__(self, type, **fields):
+        self.type = type
+        for k, v in fields.items():
+            setattr(self, k, v)
+
+
+class _RespUsage:
+    def __init__(self, p, c, t, reasoning=0):
+        self.input_tokens = p
+        self.output_tokens = c
+        self.total_tokens = t
+
+        class _Det:
+            reasoning_tokens = reasoning
+
+        self.output_tokens_details = _Det()
+
+
+class _RespFinal:
+    def __init__(self, output, usage):
+        self.output = output
+        self.usage = usage
+
+
+class _RespStream:
+    def __init__(self, events, final):
+        self._events = events
+        self._final = final
+
+    def __aiter__(self):
+        events = self._events
+
+        async def _aiter():
+            for ev in events:
+                yield ev
+
+        return _aiter()
+
+    async def get_final_response(self):
+        return self._final
+
+
+class _RespStreamCtx:
+    def __init__(self, events, final):
+        self._stream = _RespStream(events, final)
+
+    async def __aenter__(self):
+        return self._stream
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+
+@pytest.mark.asyncio
+async def test_responses_stream_yields_text_reasoning_and_tool_deltas(make_provider, monkeypatch):
+    p = make_provider("gpt-5.5", reasoning_effort="medium")
+
+    events = [
+        _RespEvent("response.reasoning_summary_text.delta", delta="thinking..."),
+        _RespEvent("response.output_text.delta", delta="Hello "),
+        _RespEvent("response.output_text.delta", delta="world"),
+        _RespEvent("response.function_call_arguments.delta", output_index=1, delta='{"q":'),
+        _RespEvent("response.function_call_arguments.delta", output_index=1, delta='"cats"}'),
+    ]
+    final_output = [
+        {"type": "reasoning", "id": "rs_1", "summary": []},
+        {
+            "type": "message",
+            "content": [{"type": "output_text", "text": "Hello world"}],
+        },
+        {
+            "type": "function_call",
+            "call_id": "call_z",
+            "name": "search",
+            "arguments": json.dumps({"q": "cats"}),
+        },
+    ]
+    final = _RespFinal(final_output, _RespUsage(10, 5, 15, reasoning=3))
+
+    def fake_stream(**params):
+        return _RespStreamCtx(events, final)
+
+    monkeypatch.setattr(p._client.responses, "stream", fake_stream)
+
+    iterator = await p.complete(
+        messages=[Message.user("hi")],
+        tools=[ToolDefinition(name="search", description="", parameters={})],
+        stream=True,
+    )
+    collected = []
+    async for ev in iterator:
+        collected.append(ev)
+
+    content_text = "".join(e.text for e in collected if isinstance(e, ContentDelta))
+    reasoning_text = "".join(
+        e.text for e in collected if hasattr(e, "type") and e.type == "reasoning"
+    )
+    tc_chunks = [e for e in collected if isinstance(e, ToolCallDelta) and e.arguments_chunk]
+    usage_evs = [e for e in collected if isinstance(e, UsageEvent)]
+    done = [e for e in collected if isinstance(e, DoneEvent)]
+
+    assert content_text == "Hello world"
+    assert reasoning_text == "thinking..."
+    assert "".join(c.arguments_chunk for c in tc_chunks) == '{"q":"cats"}'
+    assert usage_evs and usage_evs[0].reasoning_tokens == 3
+    assert done
+    final_resp = done[0].response
+    assert final_resp.content == "Hello world"
+    assert final_resp.tool_calls[0].arguments == {"q": "cats"}
+    # raw_output must be preserved for the tool loop re-feed
+    assert final_resp.raw_output == final_output
+
+
+@pytest.mark.asyncio
+async def test_responses_non_stream_uses_stream_internally(make_provider, monkeypatch):
+    p = make_provider("gpt-5.5")
+
+    final_output = [
+        {
+            "type": "message",
+            "content": [{"type": "output_text", "text": "ok"}],
+        }
+    ]
+    final = _RespFinal(final_output, _RespUsage(1, 1, 2))
+    saw_calls = []
+
+    def fake_stream(**params):
+        saw_calls.append(params)
+        return _RespStreamCtx([], final)
+
+    monkeypatch.setattr(p._client.responses, "stream", fake_stream)
+
+    response = await p.complete(messages=[Message.user("hi")])
+    assert len(saw_calls) == 1
+    assert response.content == "ok"
+    assert response.raw_output == final_output

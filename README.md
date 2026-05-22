@@ -120,6 +120,18 @@ export INCEPTION_MODEL=gpt-4o-mini
 export OPENAI_API_KEY=sk-...
 ```
 
+### Providers
+
+Both `OpenAIProvider` and `AnthropicProvider` cover **stream + vision + tool**. SSE
+streaming is on by default internally — required so OpenAI-compatible gateways
+(e.g. Substrate) don't time out on long completions. Pass `stream=True` to
+`provider.complete(...)` to receive an `AsyncIterator[StreamEvent]` of
+`ContentDelta` / `ReasoningDelta` / `ToolCallDelta` / `UsageEvent` / `DoneEvent`
+instead of a single assembled `CompletionResponse`.
+
+To target Substrate or any other OpenAI-compatible gateway, keep `type:
+openai` and set `base_url` + `api_key` (see `config.example.yaml`).
+
 ## Development
 
 ```bash

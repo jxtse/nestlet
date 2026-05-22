@@ -2,11 +2,17 @@
 
 from inception.provider.base import (
     BaseProvider,
+    CompletionResponse,
+    ContentDelta,
+    DoneEvent,
     Message,
     MessageRole,
+    ReasoningDelta,
+    StreamEvent,
     ToolCall,
+    ToolCallDelta,
     ToolResult,
-    CompletionResponse,
+    UsageEvent,
 )
 from inception.provider.openai import OpenAIProvider
 
@@ -18,4 +24,10 @@ __all__ = [
     "ToolResult",
     "CompletionResponse",
     "OpenAIProvider",
+    "StreamEvent",
+    "ContentDelta",
+    "ReasoningDelta",
+    "ToolCallDelta",
+    "UsageEvent",
+    "DoneEvent",
 ]

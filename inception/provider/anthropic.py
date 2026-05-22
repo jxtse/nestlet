@@ -7,7 +7,7 @@ Supports Claude models via the Anthropic API.
 from __future__ import annotations
 
 import logging
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import Any, AsyncIterator, Awaitable, Callable, Dict, List, Optional, Union
 
 from anthropic import AsyncAnthropic
 
@@ -15,11 +15,16 @@ from inception.config.settings import ProviderConfig
 from inception.provider.base import (
     BaseProvider,
     CompletionResponse,
+    ContentDelta,
+    DoneEvent,
     Message,
     MessageRole,
+    StreamEvent,
     ToolCall,
+    ToolCallDelta,
     ToolDefinition,
     ToolResult,
+    UsageEvent,
 )
 
 logger = logging.getLogger(__name__)
@@ -70,7 +75,32 @@ class AnthropicProvider(BaseProvider):
             if msg.role == MessageRole.SYSTEM:
                 system_prompt = msg.content
             elif msg.role == MessageRole.USER:
-                converted.append({"role": "user", "content": msg.content})
+                if msg.images:
+                    content_blocks: List[Dict[str, Any]] = []
+                    if msg.content:
+                        content_blocks.append({"type": "text", "text": msg.content})
+                    for img in msg.images:
+                        if img.url:
+                            content_blocks.append(
+                                {
+                                    "type": "image",
+                                    "source": {"type": "url", "url": img.url},
+                                }
+                            )
+                        elif img.base64_data:
+                            content_blocks.append(
+                                {
+                                    "type": "image",
+                                    "source": {
+                                        "type": "base64",
+                                        "media_type": img.media_type,
+                                        "data": img.base64_data,
+                                    },
+                                }
+                            )
+                    converted.append({"role": "user", "content": content_blocks})
+                else:
+                    converted.append({"role": "user", "content": msg.content})
             elif msg.role == MessageRole.ASSISTANT:
                 content: List[Dict[str, Any]] = []
                 if msg.content:
@@ -144,53 +174,117 @@ class AnthropicProvider(BaseProvider):
             ),
         )
 
-    async def complete(
+    def _build_params(
         self,
         messages: List[Message],
-        tools: Optional[List[ToolDefinition]] = None,
-        tool_choice: Optional[str] = None,
+        tools: Optional[List[ToolDefinition]],
+        tool_choice: Optional[str],
         **kwargs: Any,
-    ) -> CompletionResponse:
-        """
-        Generate a completion.
-
-        Args:
-            messages: Conversation history
-            tools: Available tools
-            tool_choice: Tool selection mode
-            **kwargs: Additional options
-
-        Returns:
-            CompletionResponse
-        """
+    ) -> Dict[str, Any]:
         system_prompt, converted_messages = self._convert_messages(messages)
-
         params: Dict[str, Any] = {
             "model": self.model_name,
             "messages": converted_messages,
             "max_tokens": kwargs.get("max_tokens", self.config.max_tokens),
         }
-
         if system_prompt:
             params["system"] = system_prompt
-
         if tools:
             params["tools"] = self._convert_tools(tools)
             if tool_choice:
                 if tool_choice == "auto":
                     params["tool_choice"] = {"type": "auto"}
                 elif tool_choice == "none":
-                    # Don't pass tool_choice to disable tools
                     del params["tools"]
                 elif tool_choice == "required":
                     params["tool_choice"] = {"type": "any"}
                 else:
                     params["tool_choice"] = {"type": "tool", "name": tool_choice}
+        return params
 
-        logger.debug(f"Calling Anthropic API with model: {self.model_name}")
-        response = await self._client.messages.create(**params)
+    async def _complete_stream(
+        self,
+        messages: List[Message],
+        tools: Optional[List[ToolDefinition]],
+        tool_choice: Optional[str],
+        **kwargs: Any,
+    ) -> AsyncIterator[StreamEvent]:
+        """Stream the Anthropic Messages API and yield StreamEvents.
 
-        return self._parse_response(response)
+        Uses the SDK's typed event stream (``messages.stream``). The final
+        ``DoneEvent`` carries the assembled ``CompletionResponse``.
+        """
+        params = self._build_params(messages, tools, tool_choice, **kwargs)
+        logger.debug(f"Streaming Anthropic with model: {self.model_name}")
+
+        # tool_use blocks emit `content_block_start` (with id+name) then
+        # `input_json_delta` events keyed by content_block index. Accumulate
+        # by index so we can JSON-parse the final arguments.
+        tool_blocks: Dict[int, Dict[str, Any]] = {}
+
+        async with self._client.messages.stream(**params) as stream:
+            async for event in stream:
+                etype = getattr(event, "type", "") or ""
+                if etype == "content_block_start":
+                    idx = getattr(event, "index", 0) or 0
+                    block = getattr(event, "content_block", None)
+                    btype = getattr(block, "type", "") if block else ""
+                    if btype == "tool_use":
+                        tool_blocks[idx] = {
+                            "id": getattr(block, "id", "") or "",
+                            "name": getattr(block, "name", "") or "",
+                        }
+                        yield ToolCallDelta(
+                            index=idx,
+                            id=tool_blocks[idx]["id"],
+                            name=tool_blocks[idx]["name"],
+                        )
+                elif etype == "content_block_delta":
+                    idx = getattr(event, "index", 0) or 0
+                    delta = getattr(event, "delta", None)
+                    dtype = getattr(delta, "type", "") if delta else ""
+                    if dtype == "text_delta":
+                        text = getattr(delta, "text", "") or ""
+                        if text:
+                            yield ContentDelta(text=text)
+                    elif dtype == "input_json_delta":
+                        partial = getattr(delta, "partial_json", "") or ""
+                        if partial:
+                            yield ToolCallDelta(index=idx, arguments_chunk=partial)
+
+            final_message = await stream.get_final_message()
+
+        response = self._parse_response(final_message)
+        usage = getattr(final_message, "usage", None)
+        if usage:
+            yield UsageEvent(
+                prompt_tokens=getattr(usage, "input_tokens", 0) or 0,
+                completion_tokens=getattr(usage, "output_tokens", 0) or 0,
+            )
+        yield DoneEvent(response=response)
+
+    async def complete(
+        self,
+        messages: List[Message],
+        tools: Optional[List[ToolDefinition]] = None,
+        tool_choice: Optional[str] = None,
+        **kwargs: Any,
+    ) -> Union[CompletionResponse, AsyncIterator[StreamEvent]]:
+        """
+        Generate a completion. Always streams internally for parity with the
+        OpenAI provider; pass ``stream=True`` to receive the raw event
+        iterator instead of the assembled response.
+        """
+        stream = bool(kwargs.pop("stream", False))
+        if stream:
+            return self._complete_stream(messages, tools, tool_choice, **kwargs)
+
+        final: Optional[CompletionResponse] = None
+        async for event in self._complete_stream(messages, tools, tool_choice, **kwargs):
+            if isinstance(event, DoneEvent):
+                final = event.response
+        assert final is not None, "stream ended without DoneEvent"
+        return final
 
     async def complete_with_tools(
         self,
@@ -220,6 +314,7 @@ class AnthropicProvider(BaseProvider):
             response = await self.complete(
                 messages=history, tools=tools, tool_choice="auto", **kwargs
             )
+            assert isinstance(response, CompletionResponse)  # stream=False path
 
             # Add assistant message
             history.append(

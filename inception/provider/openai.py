@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import Any, AsyncIterator, Awaitable, Callable, Dict, List, Optional, Union
 
 from openai import AsyncAzureOpenAI, AsyncOpenAI
 
@@ -25,11 +25,17 @@ from inception.config.settings import ProviderConfig, ProviderType
 from inception.provider.base import (
     BaseProvider,
     CompletionResponse,
+    ContentDelta,
+    DoneEvent,
     Message,
     MessageRole,
+    ReasoningDelta,
+    StreamEvent,
     ToolCall,
+    ToolCallDelta,
     ToolDefinition,
     ToolResult,
+    UsageEvent,
 )
 
 logger = logging.getLogger(__name__)
@@ -122,31 +128,15 @@ class OpenAIProvider(BaseProvider):
             return {"max_output_tokens": max_tokens}
         return {self._max_tokens_param_name(): max_tokens}
 
-    def _parse_tool_calls(self, tool_calls: Any) -> List[ToolCall]:
-        """Parse tool calls from OpenAI Chat Completions response."""
-        if not tool_calls:
-            return []
-
-        result = []
-        for tc in tool_calls:
-            try:
-                arguments = json.loads(tc.function.arguments)
-            except json.JSONDecodeError:
-                logger.warning(f"Failed to parse tool arguments: {tc.function.arguments}")
-                arguments = {}
-
-            result.append(ToolCall(id=tc.id, name=tc.function.name, arguments=arguments))
-        return result
-
     # ------------------------------------------------------------------ Chat path
 
-    async def _complete_chat(
+    def _build_chat_params(
         self,
         messages: List[Message],
         tools: Optional[List[ToolDefinition]],
         tool_choice: Optional[str],
         **kwargs: Any,
-    ) -> CompletionResponse:
+    ) -> Dict[str, Any]:
         params: Dict[str, Any] = {
             "model": self.model_name,
             "messages": self._convert_messages(messages),
@@ -164,22 +154,132 @@ class OpenAIProvider(BaseProvider):
                         "type": "function",
                         "function": {"name": tool_choice},
                     }
+        return params
 
-        logger.debug(f"Calling OpenAI Chat Completions with model: {self.model_name}")
-        response = await self._client.chat.completions.create(**params)
+    async def _complete_chat_stream(
+        self,
+        messages: List[Message],
+        tools: Optional[List[ToolDefinition]],
+        tool_choice: Optional[str],
+        **kwargs: Any,
+    ) -> AsyncIterator[StreamEvent]:
+        """SSE stream the Chat Completions response and yield StreamEvents.
 
-        choice = response.choices[0]
-        content = choice.message.content or ""
-        tool_calls = self._parse_tool_calls(choice.message.tool_calls)
+        Substrate (and any OpenAI-compatible backend behind a custom
+        ``base_url``) requires ``stream=True`` for long completions, otherwise
+        the gateway kills the request on timeout. We always stream internally;
+        the public ``complete()`` only collects events when the caller didn't
+        opt in to streaming.
+        """
+        params = self._build_chat_params(messages, tools, tool_choice, **kwargs)
+        params["stream"] = True
+        # ``stream_options`` is rejected by older Azure Chat Completions API
+        # versions (e.g. our default ``2024-02-15-preview``), so we only ask
+        # for usage on backends known to accept it. We lose usage stats on
+        # Azure stream paths as a result — preferable to a 400.
+        if self.config.type != ProviderType.AZURE:
+            params["stream_options"] = {"include_usage": True}
 
-        return CompletionResponse(
-            content=content,
+        logger.debug(f"Streaming OpenAI Chat Completions with model: {self.model_name}")
+
+        tool_acc: Dict[int, Dict[str, Any]] = {}
+        content_parts: List[str] = []
+        finish_reason: Optional[str] = None
+        prompt_tokens = 0
+        completion_tokens = 0
+        reasoning_tokens = 0
+
+        stream = await self._client.chat.completions.create(**params)
+        async for chunk in stream:
+            usage = getattr(chunk, "usage", None)
+            if usage is not None:
+                prompt_tokens = getattr(usage, "prompt_tokens", 0) or 0
+                completion_tokens = getattr(usage, "completion_tokens", 0) or 0
+                details = getattr(usage, "completion_tokens_details", None)
+                reasoning_tokens = getattr(details, "reasoning_tokens", 0) or 0 if details else 0
+                yield UsageEvent(
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    reasoning_tokens=reasoning_tokens,
+                )
+
+            choices = getattr(chunk, "choices", None) or []
+            if not choices:
+                continue
+            choice = choices[0]
+            delta = getattr(choice, "delta", None)
+            fr = getattr(choice, "finish_reason", None)
+            if fr:
+                finish_reason = fr
+            if delta is None:
+                continue
+
+            text = getattr(delta, "content", None)
+            if text:
+                content_parts.append(text)
+                yield ContentDelta(text=text)
+
+            reasoning_text = (
+                getattr(delta, "reasoning_content", None)
+                or getattr(delta, "reasoning", None)
+                or getattr(delta, "cot_summary", None)
+            )
+            if reasoning_text:
+                yield ReasoningDelta(text=reasoning_text)
+
+            tc_deltas = getattr(delta, "tool_calls", None) or []
+            for tc in tc_deltas:
+                idx = getattr(tc, "index", 0) or 0
+                entry = tool_acc.setdefault(idx, {"id": "", "name": "", "arg_parts": []})
+                tc_id = getattr(tc, "id", None)
+                if tc_id:
+                    entry["id"] = tc_id
+                fn = getattr(tc, "function", None)
+                name = getattr(fn, "name", None) if fn else None
+                if name:
+                    entry["name"] = name
+                args_chunk = getattr(fn, "arguments", None) if fn else None
+                if args_chunk:
+                    entry["arg_parts"].append(args_chunk)
+                yield ToolCallDelta(index=idx, id=tc_id, name=name, arguments_chunk=args_chunk)
+
+        tool_calls: List[ToolCall] = []
+        for idx in sorted(tool_acc.keys()):
+            entry = tool_acc[idx]
+            raw_args = "".join(entry["arg_parts"])
+            try:
+                arguments = json.loads(raw_args) if raw_args else {}
+            except json.JSONDecodeError:
+                logger.warning(f"Failed to parse streamed tool arguments: {raw_args!r}")
+                arguments = {}
+            tool_calls.append(ToolCall(id=entry["id"], name=entry["name"], arguments=arguments))
+
+        response = CompletionResponse(
+            content="".join(content_parts),
             tool_calls=tool_calls,
-            finish_reason=choice.finish_reason or "stop",
-            prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
-            completion_tokens=response.usage.completion_tokens if response.usage else 0,
-            total_tokens=response.usage.total_tokens if response.usage else 0,
+            finish_reason=finish_reason or ("tool_calls" if tool_calls else "stop"),
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=prompt_tokens + completion_tokens,
         )
+        yield DoneEvent(response=response)
+
+    async def _complete_chat(
+        self,
+        messages: List[Message],
+        tools: Optional[List[ToolDefinition]],
+        tool_choice: Optional[str],
+        **kwargs: Any,
+    ) -> CompletionResponse:
+        """Non-streaming public entry: drives the streaming helper and
+        collects the final ``DoneEvent`` response. Internally still streams so
+        Substrate-style gateways don't time out on long completions."""
+        final: Optional[CompletionResponse] = None
+        async for event in self._complete_chat_stream(messages, tools, tool_choice, **kwargs):
+            if isinstance(event, DoneEvent):
+                final = event.response
+        assert final is not None, "stream ended without DoneEvent"
+        return final
 
     # ------------------------------------------------------------ Responses path
 
@@ -290,6 +390,32 @@ class OpenAIProvider(BaseProvider):
         instructions_override: Optional[str] = None,
         **kwargs: Any,
     ) -> CompletionResponse:
+        """Non-streaming public entry — drives the streaming helper and returns
+        the final response. Always streams internally to avoid gateway timeouts
+        on long reasoning outputs."""
+        final: Optional[CompletionResponse] = None
+        async for event in self._complete_responses_stream(
+            messages,
+            tools,
+            tool_choice,
+            input_items=input_items,
+            instructions_override=instructions_override,
+            **kwargs,
+        ):
+            if isinstance(event, DoneEvent):
+                final = event.response
+        assert final is not None, "Responses stream ended without DoneEvent"
+        return final
+
+    def _build_responses_params(
+        self,
+        messages: List[Message],
+        tools: Optional[List[ToolDefinition]],
+        tool_choice: Optional[str],
+        input_items: Optional[List[Dict[str, Any]]],
+        instructions_override: Optional[str],
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
         if input_items is None:
             instructions, input_items = self._convert_messages_to_responses_input(messages)
         else:
@@ -315,29 +441,86 @@ class OpenAIProvider(BaseProvider):
                     params["tool_choice"] = tool_choice
                 else:
                     params["tool_choice"] = {"type": "function", "name": tool_choice}
+        return params
 
-        logger.debug(f"Calling OpenAI Responses API with model: {self.model_name}")
-        response = await self._client.responses.create(**params)
+    async def _complete_responses_stream(
+        self,
+        messages: List[Message],
+        tools: Optional[List[ToolDefinition]],
+        tool_choice: Optional[str],
+        input_items: Optional[List[Dict[str, Any]]] = None,
+        instructions_override: Optional[str] = None,
+        **kwargs: Any,
+    ) -> AsyncIterator[StreamEvent]:
+        """Stream the Responses API and yield StreamEvents.
 
-        output = list(getattr(response, "output", []) or [])
+        Uses the SDK's typed event stream so we don't reimplement SSE byte
+        parsing. The final ``DoneEvent`` carries the full assembled
+        ``CompletionResponse`` including ``raw_output``, which the tool loop
+        re-feeds (reasoning items must accompany ``function_call_output`` on
+        the next turn).
+        """
+        params = self._build_responses_params(
+            messages, tools, tool_choice, input_items, instructions_override, **kwargs
+        )
+
+        logger.debug(f"Streaming OpenAI Responses API with model: {self.model_name}")
+
+        # Track function-call output_index → accumulator. The SDK emits
+        # function_call_arguments.delta events keyed by output_index; the
+        # corresponding `id` / `call_id` / `name` come from the final response.
+        arg_acc: Dict[int, List[str]] = {}
+
+        async with self._client.responses.stream(**params) as stream:
+            async for event in stream:
+                etype = getattr(event, "type", "") or ""
+                if etype == "response.output_text.delta":
+                    text = getattr(event, "delta", "") or ""
+                    if text:
+                        yield ContentDelta(text=text)
+                elif etype in (
+                    "response.reasoning_summary_text.delta",
+                    "response.reasoning_text.delta",
+                ):
+                    text = getattr(event, "delta", "") or ""
+                    if text:
+                        yield ReasoningDelta(text=text)
+                elif etype == "response.function_call_arguments.delta":
+                    idx = getattr(event, "output_index", 0) or 0
+                    chunk = getattr(event, "delta", "") or ""
+                    arg_acc.setdefault(idx, []).append(chunk)
+                    yield ToolCallDelta(index=idx, arguments_chunk=chunk)
+
+            final_response = await stream.get_final_response()
+
+        output = list(getattr(final_response, "output", []) or [])
         content, tool_calls = self._parse_responses_output(output)
 
-        usage = getattr(response, "usage", None)
+        usage = getattr(final_response, "usage", None)
         prompt_tokens = getattr(usage, "input_tokens", 0) if usage else 0
         completion_tokens = getattr(usage, "output_tokens", 0) if usage else 0
         total_tokens = getattr(usage, "total_tokens", 0) if usage else 0
+        if usage:
+            reasoning_details = getattr(usage, "output_tokens_details", None)
+            reasoning_toks = (
+                getattr(reasoning_details, "reasoning_tokens", 0) or 0 if reasoning_details else 0
+            )
+            yield UsageEvent(
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                reasoning_tokens=reasoning_toks,
+            )
 
-        finish_reason = "tool_calls" if tool_calls else "stop"
-
-        return CompletionResponse(
+        response = CompletionResponse(
             content=content,
             tool_calls=tool_calls,
-            finish_reason=finish_reason,
+            finish_reason="tool_calls" if tool_calls else "stop",
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             total_tokens=total_tokens,
             raw_output=output,
         )
+        yield DoneEvent(response=response)
 
     # ------------------------------------------------------------------ Public API
 
@@ -347,10 +530,21 @@ class OpenAIProvider(BaseProvider):
         tools: Optional[List[ToolDefinition]] = None,
         tool_choice: Optional[str] = None,
         **kwargs: Any,
-    ) -> CompletionResponse:
-        """Generate a completion using whichever OpenAI API surface fits the model."""
+    ) -> Union[CompletionResponse, AsyncIterator[StreamEvent]]:
+        """Generate a completion using whichever OpenAI API surface fits the model.
+
+        Pass ``stream=True`` to get back an ``AsyncIterator[StreamEvent]``
+        instead of a single ``CompletionResponse``. The non-streaming default
+        still uses SSE internally so Substrate / gateway endpoints don't time
+        out on long completions.
+        """
+        stream = bool(kwargs.pop("stream", False))
         if self._use_responses_api():
+            if stream:
+                return self._complete_responses_stream(messages, tools, tool_choice, **kwargs)
             return await self._complete_responses(messages, tools, tool_choice, **kwargs)
+        if stream:
+            return self._complete_chat_stream(messages, tools, tool_choice, **kwargs)
         return await self._complete_chat(messages, tools, tool_choice, **kwargs)
 
     async def complete_with_tools(
