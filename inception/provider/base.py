@@ -5,14 +5,20 @@ Defines the interface for all LLM providers, supporting:
 - Chat completions
 - Tool/function calling
 - Streaming (future)
+
+The data models (``Message``, ``ToolCall``, ``ToolDefinition``, ...) are pydantic
+``BaseModel`` instances so payloads coming from YAML, CLI, or LLM tool calls are
+validated at construction time. The classmethod constructors and ``to_dict``
+shapes are preserved verbatim so existing callers do not need to change.
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Callable, Awaitable
+from typing import Any, Awaitable, Callable, Dict, List, Optional
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class MessageRole(str, Enum):
@@ -24,9 +30,10 @@ class MessageRole(str, Enum):
     TOOL = "tool"
 
 
-@dataclass
-class ImageContent:
+class ImageContent(BaseModel):
     """Image content for multimodal messages."""
+
+    model_config = ConfigDict(extra="ignore")
 
     # Either url or base64 data
     url: Optional[str] = None
@@ -46,22 +53,43 @@ class ImageContent:
             raise ValueError("ImageContent must have either url or base64_data")
 
 
-@dataclass
-class Message:
+class ToolCall(BaseModel):
+    """A tool call requested by the model."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: str
+    name: str
+    arguments: Dict[str, Any] = Field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to OpenAI Chat Completions tool-call dict."""
+        import json
+
+        return {
+            "id": self.id,
+            "type": "function",
+            "function": {
+                "name": self.name,
+                "arguments": json.dumps(self.arguments),
+            },
+        }
+
+
+class Message(BaseModel):
     """A message in the conversation."""
+
+    model_config = ConfigDict(extra="ignore", arbitrary_types_allowed=True)
 
     role: MessageRole
     content: str
-    # For multimodal content (images)
     images: Optional[List[ImageContent]] = None
-    # For tool calls from assistant
     tool_calls: Optional[List[ToolCall]] = None
-    # For tool responses
     tool_call_id: Optional[str] = None
     name: Optional[str] = None  # Tool name for tool messages
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for API calls."""
+        """Convert to dictionary for OpenAI Chat Completions API calls."""
         result: Dict[str, Any] = {
             "role": self.role.value,
         }
@@ -86,17 +114,17 @@ class Message:
         return result
 
     @classmethod
-    def system(cls, content: str) -> Message:
+    def system(cls, content: str) -> "Message":
         """Create a system message."""
         return cls(role=MessageRole.SYSTEM, content=content)
 
     @classmethod
-    def user(cls, content: str, images: Optional[List[ImageContent]] = None) -> Message:
+    def user(cls, content: str, images: Optional[List[ImageContent]] = None) -> "Message":
         """Create a user message, optionally with images."""
         return cls(role=MessageRole.USER, content=content, images=images)
 
     @classmethod
-    def user_with_image(cls, content: str, image_path: str) -> Message:
+    def user_with_image(cls, content: str, image_path: str) -> "Message":
         """Create a user message with an image from file path."""
         import base64
         from pathlib import Path
@@ -105,7 +133,6 @@ class Message:
         if not path.exists():
             raise FileNotFoundError(f"Image not found: {image_path}")
 
-        # Determine media type
         suffix = path.suffix.lower()
         media_types = {
             ".png": "image/png",
@@ -116,7 +143,6 @@ class Message:
         }
         media_type = media_types.get(suffix, "image/png")
 
-        # Read and encode
         with open(path, "rb") as f:
             base64_data = base64.b64encode(f.read()).decode("utf-8")
 
@@ -127,50 +153,29 @@ class Message:
         )
 
     @classmethod
-    def user_with_image_url(cls, content: str, image_url: str) -> Message:
+    def user_with_image_url(cls, content: str, image_url: str) -> "Message":
         """Create a user message with an image URL."""
         return cls(role=MessageRole.USER, content=content, images=[ImageContent(url=image_url)])
 
     @classmethod
-    def assistant(cls, content: str, tool_calls: Optional[List[ToolCall]] = None) -> Message:
+    def assistant(cls, content: str, tool_calls: Optional[List[ToolCall]] = None) -> "Message":
         """Create an assistant message."""
         return cls(role=MessageRole.ASSISTANT, content=content, tool_calls=tool_calls)
 
     @classmethod
-    def tool(cls, content: str, tool_call_id: str, name: str) -> Message:
+    def tool(cls, content: str, tool_call_id: str, name: str) -> "Message":
         """Create a tool response message."""
         return cls(role=MessageRole.TOOL, content=content, tool_call_id=tool_call_id, name=name)
 
 
-@dataclass
-class ToolCall:
-    """A tool call requested by the model."""
+class ToolResult(BaseModel):
+    """Result from executing a tool (provider-level wire shape)."""
 
-    id: str
-    name: str
-    arguments: Dict[str, Any]
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary."""
-        import json
-
-        return {
-            "id": self.id,
-            "type": "function",
-            "function": {
-                "name": self.name,
-                "arguments": json.dumps(self.arguments),
-            },
-        }
-
-
-@dataclass
-class ToolResult:
-    """Result from executing a tool."""
+    model_config = ConfigDict(extra="ignore", arbitrary_types_allowed=True)
 
     tool_call_id: str
     name: str
-    result: Any
+    result: Any = None
     success: bool = True
     error: Optional[str] = None
 
@@ -183,16 +188,17 @@ class ToolResult:
         return Message.tool(content=content, tool_call_id=self.tool_call_id, name=self.name)
 
 
-@dataclass
-class ToolDefinition:
+class ToolDefinition(BaseModel):
     """Definition of a tool for the LLM."""
+
+    model_config = ConfigDict(extra="ignore")
 
     name: str
     description: str
-    parameters: Dict[str, Any]  # JSON Schema
+    parameters: Dict[str, Any] = Field(default_factory=dict)  # JSON Schema
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to OpenAI function format."""
+        """Convert to OpenAI Chat Completions function format (nested)."""
         return {
             "type": "function",
             "function": {
@@ -202,18 +208,36 @@ class ToolDefinition:
             },
         }
 
+    def to_responses_dict(self) -> Dict[str, Any]:
+        """Convert to OpenAI Responses API function format (flat).
 
-@dataclass
-class CompletionResponse:
+        The Responses API expects ``{"type": "function", "name": ..., ...}``
+        directly without nesting under a ``function`` key.
+        """
+        return {
+            "type": "function",
+            "name": self.name,
+            "description": self.description,
+            "parameters": self.parameters,
+        }
+
+
+class CompletionResponse(BaseModel):
     """Response from a completion request."""
 
+    model_config = ConfigDict(extra="ignore", arbitrary_types_allowed=True)
+
     content: str
-    tool_calls: List[ToolCall] = field(default_factory=list)
+    tool_calls: List[ToolCall] = Field(default_factory=list)
     finish_reason: str = "stop"
     # Usage stats
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
+    # Raw provider output (Responses API only). Holds the original
+    # ``response.output`` array so the tool-call loop can re-feed reasoning
+    # items per OpenAI's requirement. ``None`` on the Chat path.
+    raw_output: Optional[List[Any]] = None
 
     @property
     def has_tool_calls(self) -> bool:

@@ -3,17 +3,22 @@ Configuration settings for Inception.
 
 Manages all configuration including LLM providers, execution settings,
 and security policies.
+
+The provider/execution/memory/web_search models use pydantic v2 BaseModel for
+runtime validation. Hand-rolled ``from_dict`` / ``to_dict`` / ``from_yaml`` /
+``save_yaml`` are preserved as thin wrappers over pydantic so call sites in the
+agent / settings loaders do not change.
 """
 
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 import yaml
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class ProviderType(str, Enum):
@@ -32,13 +37,31 @@ class ExecutionMode(str, Enum):
     TRUSTED = "trusted"  # Full access (for trusted environments)
 
 
-@dataclass
-class ProviderConfig:
+# Token-budget kwarg name resolved at the provider level — the config keeps a
+# single canonical ``max_tokens``. Reasoning effort levels mirror what OpenAI's
+# Responses API accepts for ``reasoning.effort``.
+ReasoningEffort = Literal["none", "minimal", "low", "medium", "high", "xhigh"]
+ReasoningSummary = Literal["auto", "concise", "detailed"]
+ApiMode = Literal["auto", "chat", "responses"]
+
+DEFAULT_MODEL = "gpt-5.5"
+
+
+class ProviderConfig(BaseModel):
     """LLM provider configuration."""
+
+    model_config = ConfigDict(
+        # ProviderConfig is constructed both from typed kwargs (tests, env loader)
+        # and from raw dicts (YAML). ``use_enum_values=False`` keeps ``type`` as
+        # an enum on the instance; ``model_dump`` serializes via ``mode='json'``
+        # when we need the wire form.
+        extra="ignore",
+        arbitrary_types_allowed=True,
+    )
 
     type: ProviderType
     api_key: Optional[str] = None
-    model: str = "gpt-4o-mini"
+    model: str = DEFAULT_MODEL
     base_url: Optional[str] = None
     # Azure-specific
     azure_endpoint: Optional[str] = None
@@ -50,26 +73,57 @@ class ProviderConfig:
     # Token limits
     max_tokens: int = 4096
     temperature: float = 0.7
+    # Responses API dispatch + reasoning controls
+    api_mode: ApiMode = "auto"
+    reasoning_effort: Optional[ReasoningEffort] = None
+    reasoning_summary: Optional[ReasoningSummary] = None
+
+    @field_validator("type", mode="before")
+    @classmethod
+    def _coerce_type(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return ProviderType(value)
+        return value
+
+    @model_validator(mode="after")
+    def _validate_provider_combo(self) -> "ProviderConfig":
+        if self.type == ProviderType.AZURE and not self.azure_endpoint:
+            raise ValueError("Azure provider requires azure_endpoint")
+        return self
+
+    def resolved_api_mode(self) -> Literal["chat", "responses"]:
+        """Resolve ``api_mode='auto'`` against the active model name.
+
+        gpt-5*, o1*, o3*, o4* are routed to the Responses API; everything else
+        falls back to the Chat Completions API. Callers that need to know the
+        active mode (e.g. the OpenAI provider) should use this helper instead
+        of reading ``api_mode`` directly.
+        """
+        if self.api_mode == "responses":
+            return "responses"
+        if self.api_mode == "chat":
+            return "chat"
+        model = (self.model or "").lower()
+        if model.startswith(("gpt-5", "o1", "o3", "o4")):
+            return "responses"
+        return "chat"
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> ProviderConfig:
-        """Create from dictionary."""
+    def from_dict(cls, data: Dict[str, Any]) -> "ProviderConfig":
+        """Create from dictionary, applying env-var fallback for api_key."""
+        data = dict(data or {})
         provider_type = data.get("type", "openai")
         if isinstance(provider_type, str):
             provider_type = ProviderType(provider_type)
-        return cls(
-            type=provider_type,
-            api_key=data.get("api_key") or os.getenv(f"{provider_type.value.upper()}_API_KEY"),
-            model=data.get("model", "gpt-4o-mini"),
-            base_url=data.get("base_url"),
-            azure_endpoint=data.get("azure_endpoint"),
-            azure_deployment=data.get("azure_deployment"),
-            api_version=data.get("api_version", "2024-02-15-preview"),
-            max_retries=data.get("max_retries", 3),
-            timeout=data.get("timeout", 60.0),
-            max_tokens=data.get("max_tokens", 4096),
-            temperature=data.get("temperature", 0.7),
-        )
+        data["type"] = provider_type
+
+        # Preserve the historical env-var fallback behavior — pydantic
+        # validation can't pull from env vars on its own.
+        if not data.get("api_key"):
+            data["api_key"] = os.getenv(f"{provider_type.value.upper()}_API_KEY")
+        data.setdefault("model", DEFAULT_MODEL)
+        data.setdefault("api_version", "2024-02-15-preview")
+        return cls.model_validate(data)
 
 
 # Default module lists (defined outside class for reference in from_dict)
@@ -120,68 +174,63 @@ DEFAULT_BLOCKED_MODULES: List[str] = [
 ]
 
 
-@dataclass
-class ExecutionConfig:
+class ExecutionConfig(BaseModel):
     """Code execution configuration."""
+
+    model_config = ConfigDict(extra="ignore", arbitrary_types_allowed=True)
 
     mode: ExecutionMode = ExecutionMode.SANDBOX
     timeout: float = 30.0  # seconds
     max_memory_mb: int = 512
-    # Module restrictions
-    allowed_modules: List[str] = field(default_factory=lambda: DEFAULT_ALLOWED_MODULES.copy())
-    blocked_modules: List[str] = field(default_factory=lambda: DEFAULT_BLOCKED_MODULES.copy())
-    # Working directory for file operations
+    allowed_modules: List[str] = Field(default_factory=lambda: DEFAULT_ALLOWED_MODULES.copy())
+    blocked_modules: List[str] = Field(default_factory=lambda: DEFAULT_BLOCKED_MODULES.copy())
     workspace_dir: Optional[Path] = None
 
+    @field_validator("mode", mode="before")
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> ExecutionConfig:
-        """Create from dictionary."""
-        mode = data.get("mode", "sandbox")
-        if isinstance(mode, str):
-            mode = ExecutionMode(mode)
+    def _coerce_mode(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return ExecutionMode(value)
+        return value
 
-        workspace = data.get("workspace_dir")
-        if workspace:
-            workspace = Path(workspace)
+    @field_validator("workspace_dir", mode="before")
+    @classmethod
+    def _coerce_workspace(cls, value: Any) -> Any:
+        if value is None or isinstance(value, Path):
+            return value
+        return Path(value)
 
-        return cls(
-            mode=mode,
-            timeout=data.get("timeout", 30.0),
-            max_memory_mb=data.get("max_memory_mb", 512),
-            allowed_modules=data.get("allowed_modules", DEFAULT_ALLOWED_MODULES.copy()),
-            blocked_modules=data.get("blocked_modules", DEFAULT_BLOCKED_MODULES.copy()),
-            workspace_dir=workspace,
-        )
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ExecutionConfig":
+        return cls.model_validate(data or {})
 
 
-@dataclass
-class MemoryConfig:
+class MemoryConfig(BaseModel):
     """Memory system configuration."""
+
+    model_config = ConfigDict(extra="ignore", arbitrary_types_allowed=True)
 
     max_conversation_turns: int = 50
     max_working_memory_items: int = 20
-    # Long-term memory persistence
     persist_tools: bool = True
     tools_storage_path: Optional[Path] = None
 
+    @field_validator("tools_storage_path", mode="before")
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> MemoryConfig:
-        """Create from dictionary."""
-        tools_path = data.get("tools_storage_path")
-        if tools_path:
-            tools_path = Path(tools_path)
+    def _coerce_path(cls, value: Any) -> Any:
+        if value is None or isinstance(value, Path):
+            return value
+        return Path(value)
 
-        return cls(
-            max_conversation_turns=data.get("max_conversation_turns", 50),
-            max_working_memory_items=data.get("max_working_memory_items", 20),
-            persist_tools=data.get("persist_tools", True),
-            tools_storage_path=tools_path,
-        )
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "MemoryConfig":
+        return cls.model_validate(data or {})
 
 
-@dataclass
-class WebSearchConfig:
+class WebSearchConfig(BaseModel):
     """Web search configuration."""
+
+    model_config = ConfigDict(extra="ignore")
 
     enabled: bool = True
     backend: str = "tavily"  # "tavily" | "duckduckgo"
@@ -191,64 +240,50 @@ class WebSearchConfig:
     default_language: str = "en"
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> WebSearchConfig:
-        """Create from dictionary."""
-        # Support environment variable for API key
-        tavily_api_key = data.get("tavily_api_key") or os.getenv("TAVILY_API_KEY")
-
-        return cls(
-            enabled=data.get("enabled", True),
-            backend=data.get("backend", "tavily"),
-            tavily_api_key=tavily_api_key,
-            default_max_results=data.get("default_max_results", 5),
-            deep_search_max_results=data.get("deep_search_max_results", 10),
-            default_language=data.get("default_language", "en"),
-        )
+    def from_dict(cls, data: Dict[str, Any]) -> "WebSearchConfig":
+        data = dict(data or {})
+        if not data.get("tavily_api_key"):
+            data["tavily_api_key"] = os.getenv("TAVILY_API_KEY")
+        return cls.model_validate(data)
 
 
-@dataclass
-class Settings:
-    """
-    Main settings container for Inception.
+class Settings(BaseModel):
+    """Main settings container for Inception."""
 
-    Can be initialized from:
-    - Environment variables
-    - YAML configuration file
-    - Direct instantiation
-    """
+    model_config = ConfigDict(extra="ignore", arbitrary_types_allowed=True)
 
-    provider: ProviderConfig = field(
+    provider: ProviderConfig = Field(
         default_factory=lambda: ProviderConfig(type=ProviderType.OPENAI)
     )
-    execution: ExecutionConfig = field(default_factory=ExecutionConfig)
-    memory: MemoryConfig = field(default_factory=MemoryConfig)
-    web_search: WebSearchConfig = field(default_factory=WebSearchConfig)
-    # Agent settings
+    execution: ExecutionConfig = Field(default_factory=ExecutionConfig)
+    memory: MemoryConfig = Field(default_factory=MemoryConfig)
+    web_search: WebSearchConfig = Field(default_factory=WebSearchConfig)
     agent_name: str = "Inception"
     verbose: bool = False
     debug: bool = False
-    # Plugin directory
     plugins_dir: Optional[Path] = None
 
+    @field_validator("plugins_dir", mode="before")
     @classmethod
-    def from_yaml(cls, path: Path | str) -> Settings:
+    def _coerce_plugins_dir(cls, value: Any) -> Any:
+        if value is None or isinstance(value, Path):
+            return value
+        return Path(value)
+
+    @classmethod
+    def from_yaml(cls, path: Path | str) -> "Settings":
         """Load settings from YAML file."""
         path = Path(path)
         if not path.exists():
             raise FileNotFoundError(f"Config file not found: {path}")
-
         with open(path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
-
         return cls.from_dict(data or {})
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> Settings:
+    def from_dict(cls, data: Dict[str, Any]) -> "Settings":
         """Create from dictionary."""
-        plugins_dir = data.get("plugins_dir")
-        if plugins_dir:
-            plugins_dir = Path(plugins_dir)
-
+        data = dict(data or {})
         return cls(
             provider=ProviderConfig.from_dict(data.get("provider", {})),
             execution=ExecutionConfig.from_dict(data.get("execution", {})),
@@ -257,23 +292,24 @@ class Settings:
             agent_name=data.get("agent_name", "Inception"),
             verbose=data.get("verbose", False),
             debug=data.get("debug", False),
-            plugins_dir=plugins_dir,
+            plugins_dir=data.get("plugins_dir"),
         )
 
     @classmethod
-    def from_env(cls) -> Settings:
+    def from_env(cls) -> "Settings":
         """Create settings from environment variables."""
-        # Determine provider type
         provider_type = os.getenv("INCEPTION_PROVIDER", "openai")
-
         provider_config = ProviderConfig(
             type=ProviderType(provider_type),
             api_key=os.getenv(f"{provider_type.upper()}_API_KEY"),
-            model=os.getenv("INCEPTION_MODEL", "gpt-4o-mini"),
+            model=os.getenv("INCEPTION_MODEL", DEFAULT_MODEL),
             base_url=os.getenv("INCEPTION_BASE_URL"),
             azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
             azure_deployment=os.getenv("AZURE_OPENAI_DEPLOYMENT"),
             api_version=os.getenv("AZURE_API_VERSION", "2024-02-15-preview"),
+            api_mode=os.getenv("INCEPTION_API_MODE", "auto"),  # type: ignore[arg-type]
+            reasoning_effort=os.getenv("INCEPTION_REASONING_EFFORT") or None,  # type: ignore[arg-type]
+            reasoning_summary=os.getenv("INCEPTION_REASONING_SUMMARY") or None,  # type: ignore[arg-type]
         )
 
         execution_config = ExecutionConfig(
@@ -297,17 +333,29 @@ class Settings:
         )
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary (for serialization)."""
+        """Convert to dictionary (for YAML serialization).
+
+        The output is intentionally a curated subset of the model — secrets
+        (api keys), workspace paths, and unset reasoning fields are excluded so
+        the YAML stays clean and shareable.
+        """
+        provider = {
+            "type": self.provider.type.value,
+            "model": self.provider.model,
+            "base_url": self.provider.base_url,
+            "max_retries": self.provider.max_retries,
+            "timeout": self.provider.timeout,
+            "max_tokens": self.provider.max_tokens,
+            "temperature": self.provider.temperature,
+            "api_mode": self.provider.api_mode,
+        }
+        if self.provider.reasoning_effort is not None:
+            provider["reasoning_effort"] = self.provider.reasoning_effort
+        if self.provider.reasoning_summary is not None:
+            provider["reasoning_summary"] = self.provider.reasoning_summary
+
         return {
-            "provider": {
-                "type": self.provider.type.value,
-                "model": self.provider.model,
-                "base_url": self.provider.base_url,
-                "max_retries": self.provider.max_retries,
-                "timeout": self.provider.timeout,
-                "max_tokens": self.provider.max_tokens,
-                "temperature": self.provider.temperature,
-            },
+            "provider": provider,
             "execution": {
                 "mode": self.execution.mode.value,
                 "timeout": self.execution.timeout,
@@ -336,6 +384,5 @@ class Settings:
         """Save settings to YAML file."""
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
-
         with open(path, "w", encoding="utf-8") as f:
             yaml.safe_dump(self.to_dict(), f, default_flow_style=False)

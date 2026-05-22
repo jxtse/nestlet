@@ -3,13 +3,22 @@
 
 provider:
   type: openai              # openai | anthropic | azure | openrouter
-  model: gpt-4o-mini            # Model name
+  model: gpt-5.5            # Default flagship; uses the Responses API automatically
   # base_url: https://api.openai.com/v1  # Optional: custom API endpoint
   # api_key: sk-...         # Optional: set here or use environment variable
   temperature: 0.7
   max_tokens: 4096
   timeout: 60.0
   max_retries: 3
+  # api_mode selects the OpenAI API surface:
+  #   auto      -> Responses API for gpt-5*/o1*/o3*/o4*, Chat Completions otherwise
+  #   responses -> always use Responses API
+  #   chat      -> always use Chat Completions (e.g. for OpenRouter or legacy models)
+  api_mode: auto
+  # Reasoning budget for the Responses API. Only sent when set.
+  # Allowed: none | minimal | low | medium | high | xhigh
+  # reasoning_effort: medium
+  # reasoning_summary: auto      # auto | concise | detailed
 
 execution:
   mode: sandbox             # sandbox (restricted) | trusted (full access)
