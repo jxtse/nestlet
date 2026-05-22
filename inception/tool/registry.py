@@ -13,7 +13,7 @@ import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 from inception.tool.base import Tool, ToolSpec
 from inception.provider.base import ToolDefinition
@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ToolEntry:
     """Entry in the tool registry."""
+
     tool: Tool
     category: str
     tags: Set[str]
@@ -177,10 +178,7 @@ class ToolRegistry:
         else:
             tool_names = self.list_all()
 
-        return [
-            self._tools[name].tool.spec.to_tool_definition()
-            for name in tool_names
-        ]
+        return [self._tools[name].tool.spec.to_tool_definition() for name in tool_names]
 
     def search(
         self,
@@ -213,8 +211,7 @@ class ToolRegistry:
 
             # Query match
             spec = entry.tool.spec
-            if (query_lower in spec.name.lower() or
-                query_lower in spec.description.lower()):
+            if query_lower in spec.name.lower() or query_lower in spec.description.lower():
                 results.append(spec)
 
         return results
@@ -226,10 +223,7 @@ class ToolRegistry:
 
     def get_usage_stats(self) -> Dict[str, int]:
         """Get usage statistics for all tools."""
-        return {
-            name: entry.usage_count
-            for name, entry in self._tools.items()
-        }
+        return {name: entry.usage_count for name, entry in self._tools.items()}
 
     # Persistence methods
 

@@ -30,11 +30,10 @@ from inception.config.settings import ProviderType, Settings
 from inception.executor.kernel import PythonKernel
 from inception.executor.state import StateManager
 from inception.memory.conversation import ConversationMemory
-from inception.memory.working_memory import MemoryItemType, WorkingMemory
+from inception.memory.working_memory import WorkingMemory
 from inception.provider.anthropic import AnthropicProvider
 from inception.provider.base import BaseProvider, Message, ToolCall
 from inception.provider.openai import OpenAIProvider
-from inception.tool.base import Tool, ToolResult
 from inception.tool.factory import ToolFactory
 from inception.tool.registry import ToolRegistry
 from inception.metacognition.capability import CapabilityAssessor
@@ -178,12 +177,16 @@ class HybridAgent(BaseAgent):
         # Initialize kernel with allowed/blocked modules from settings
         self._kernel = kernel or PythonKernel(
             timeout=self._settings.execution.timeout,
-            allowed_modules=set(self._settings.execution.allowed_modules)
-            if self._settings.execution.allowed_modules
-            else None,
-            blocked_modules=set(self._settings.execution.blocked_modules)
-            if self._settings.execution.blocked_modules
-            else None,
+            allowed_modules=(
+                set(self._settings.execution.allowed_modules)
+                if self._settings.execution.allowed_modules
+                else None
+            ),
+            blocked_modules=(
+                set(self._settings.execution.blocked_modules)
+                if self._settings.execution.blocked_modules
+                else None
+            ),
         )
 
         # Initialize registry and factory with persistence
@@ -700,7 +703,6 @@ class HybridAgent(BaseAgent):
         self._conversation.add_user_message(input, images=image_data)
 
         iterations = 0
-        responses = []
 
         while iterations < max_iterations:
             # Think

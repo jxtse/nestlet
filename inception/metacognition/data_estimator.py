@@ -14,21 +14,24 @@ from typing import Any, Dict, List, Optional, Tuple
 
 class DataScale(str, Enum):
     """Data scale categories based on item count."""
-    SMALL = "small"       # < 200 items - Direct processing
-    MEDIUM = "medium"     # 200-2000 items - Batch processing
-    LARGE = "large"       # > 2000 items - MapReduce processing
+
+    SMALL = "small"  # < 200 items - Direct processing
+    MEDIUM = "medium"  # 200-2000 items - Batch processing
+    LARGE = "large"  # > 2000 items - MapReduce processing
 
 
 class ProcessingStrategy(str, Enum):
     """Recommended processing strategies for different data scales."""
-    DIRECT = "direct"        # Process all at once (small scale)
-    BATCH = "batch"          # Split into batches and process (medium scale)
+
+    DIRECT = "direct"  # Process all at once (small scale)
+    BATCH = "batch"  # Split into batches and process (medium scale)
     MAP_REDUCE = "map_reduce"  # Map-Reduce pattern (large scale)
 
 
 @dataclass
 class DataSizeEstimate:
     """Estimation of data size and recommended processing approach."""
+
     scale: DataScale
     strategy: ProcessingStrategy
     estimated_items: int
@@ -79,8 +82,8 @@ class DataSizeEstimator:
     """
 
     # Thresholds for data scale classification
-    SMALL_THRESHOLD = 200      # Below this: direct processing
-    LARGE_THRESHOLD = 2000     # Above this: map-reduce
+    SMALL_THRESHOLD = 200  # Below this: direct processing
+    LARGE_THRESHOLD = 2000  # Above this: map-reduce
 
     # Default batch size for medium scale
     DEFAULT_BATCH_SIZE = 50
@@ -88,7 +91,10 @@ class DataSizeEstimator:
     # Patterns for detecting data size indicators
     NUMBER_PATTERNS = [
         # Explicit counts: "5000 reviews", "10,000 items"
-        (r"(\d{1,3}(?:,\d{3})*|\d+)\s*(?:rows?|items?|records?|entries?|lines?|reviews?|comments?|documents?|files?|emails?|messages?|transactions?|orders?|customers?|users?|products?)", "items"),
+        (
+            r"(\d{1,3}(?:,\d{3})*|\d+)\s*(?:rows?|items?|records?|entries?|lines?|reviews?|comments?|documents?|files?|emails?|messages?|transactions?|orders?|customers?|users?|products?)",
+            "items",
+        ),
         # File sizes: "500MB file", "2GB dataset"
         (r"(\d+(?:\.\d+)?)\s*(?:KB|MB|GB|TB)", "file_size"),
         # Token counts: "100K tokens"
@@ -101,16 +107,39 @@ class DataSizeEstimator:
 
     # Keywords indicating large data operations
     LARGE_DATA_KEYWORDS = [
-        "all", "every", "each", "entire", "whole", "complete",
-        "batch", "bulk", "mass", "large", "huge", "massive",
-        "dataset", "database", "corpus", "collection",
+        "all",
+        "every",
+        "each",
+        "entire",
+        "whole",
+        "complete",
+        "batch",
+        "bulk",
+        "mass",
+        "large",
+        "huge",
+        "massive",
+        "dataset",
+        "database",
+        "corpus",
+        "collection",
     ]
 
     # Keywords indicating semantic analysis tasks
     SEMANTIC_TASK_KEYWORDS = [
-        "analyze", "analysis", "sentiment", "topic", "theme",
-        "classify", "categorize", "summarize", "extract",
-        "identify", "detect", "recognize", "understand",
+        "analyze",
+        "analysis",
+        "sentiment",
+        "topic",
+        "theme",
+        "classify",
+        "categorize",
+        "summarize",
+        "extract",
+        "identify",
+        "detect",
+        "recognize",
+        "understand",
     ]
 
     def __init__(self, default_tokens_per_item: int = 50):
@@ -122,7 +151,9 @@ class DataSizeEstimator:
         """
         self._default_tokens_per_item = default_tokens_per_item
 
-    def estimate(self, task: str, execution_context: Optional[Dict[str, Any]] = None) -> DataSizeEstimate:
+    def estimate(
+        self, task: str, execution_context: Optional[Dict[str, Any]] = None
+    ) -> DataSizeEstimate:
         """
         Estimate data size from task description.
 
@@ -360,7 +391,10 @@ class DataSizeEstimator:
             # Two approaches for medium-scale batch processing
             plan = [
                 {"mode": "Approach A", "purpose": "Batch Processing"},
-                {"mode": "Symbolic", "purpose": f"  Split data into batches of ~{batch_size} items"},
+                {
+                    "mode": "Symbolic",
+                    "purpose": f"  Split data into batches of ~{batch_size} items",
+                },
                 {"mode": "Loop", "purpose": "  For each batch:"},
                 {"mode": "Neural", "purpose": "    Call llm_call to process the batch"},
                 {"mode": "Symbolic", "purpose": "  Combine all batch results"},
@@ -375,7 +409,10 @@ class DataSizeEstimator:
         elif strategy == ProcessingStrategy.MAP_REDUCE:
             plan = [
                 {"mode": "Map Phase", "purpose": ""},
-                {"mode": "Symbolic", "purpose": f"  Split data into batches of ~{batch_size} items"},
+                {
+                    "mode": "Symbolic",
+                    "purpose": f"  Split data into batches of ~{batch_size} items",
+                },
                 {"mode": "Loop", "purpose": "  For each batch:"},
                 {"mode": "Neural", "purpose": "    Call llm_call to analyze the batch"},
                 {"mode": "Symbolic", "purpose": "    Store intermediate results"},

@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional, Callable, Awaitable
 
 class MessageRole(str, Enum):
     """Message roles in a conversation."""
+
     SYSTEM = "system"
     USER = "user"
     ASSISTANT = "assistant"
@@ -26,6 +27,7 @@ class MessageRole(str, Enum):
 @dataclass
 class ImageContent:
     """Image content for multimodal messages."""
+
     # Either url or base64 data
     url: Optional[str] = None
     base64_data: Optional[str] = None
@@ -34,16 +36,11 @@ class ImageContent:
     def to_dict(self) -> Dict[str, Any]:
         """Convert to API format."""
         if self.url:
-            return {
-                "type": "image_url",
-                "image_url": {"url": self.url}
-            }
+            return {"type": "image_url", "image_url": {"url": self.url}}
         elif self.base64_data:
             return {
                 "type": "image_url",
-                "image_url": {
-                    "url": f"data:{self.media_type};base64,{self.base64_data}"
-                }
+                "image_url": {"url": f"data:{self.media_type};base64,{self.base64_data}"},
             }
         else:
             raise ValueError("ImageContent must have either url or base64_data")
@@ -52,6 +49,7 @@ class ImageContent:
 @dataclass
 class Message:
     """A message in the conversation."""
+
     role: MessageRole
     content: str
     # For multimodal content (images)
@@ -125,41 +123,29 @@ class Message:
         return cls(
             role=MessageRole.USER,
             content=content,
-            images=[ImageContent(base64_data=base64_data, media_type=media_type)]
+            images=[ImageContent(base64_data=base64_data, media_type=media_type)],
         )
 
     @classmethod
     def user_with_image_url(cls, content: str, image_url: str) -> Message:
         """Create a user message with an image URL."""
-        return cls(
-            role=MessageRole.USER,
-            content=content,
-            images=[ImageContent(url=image_url)]
-        )
+        return cls(role=MessageRole.USER, content=content, images=[ImageContent(url=image_url)])
 
     @classmethod
-    def assistant(
-        cls,
-        content: str,
-        tool_calls: Optional[List[ToolCall]] = None
-    ) -> Message:
+    def assistant(cls, content: str, tool_calls: Optional[List[ToolCall]] = None) -> Message:
         """Create an assistant message."""
         return cls(role=MessageRole.ASSISTANT, content=content, tool_calls=tool_calls)
 
     @classmethod
     def tool(cls, content: str, tool_call_id: str, name: str) -> Message:
         """Create a tool response message."""
-        return cls(
-            role=MessageRole.TOOL,
-            content=content,
-            tool_call_id=tool_call_id,
-            name=name
-        )
+        return cls(role=MessageRole.TOOL, content=content, tool_call_id=tool_call_id, name=name)
 
 
 @dataclass
 class ToolCall:
     """A tool call requested by the model."""
+
     id: str
     name: str
     arguments: Dict[str, Any]
@@ -167,19 +153,21 @@ class ToolCall:
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
         import json
+
         return {
             "id": self.id,
             "type": "function",
             "function": {
                 "name": self.name,
                 "arguments": json.dumps(self.arguments),
-            }
+            },
         }
 
 
 @dataclass
 class ToolResult:
     """Result from executing a tool."""
+
     tool_call_id: str
     name: str
     result: Any
@@ -192,16 +180,13 @@ class ToolResult:
             content = str(self.result) if self.result is not None else ""
         else:
             content = f"Error: {self.error}"
-        return Message.tool(
-            content=content,
-            tool_call_id=self.tool_call_id,
-            name=self.name
-        )
+        return Message.tool(content=content, tool_call_id=self.tool_call_id, name=self.name)
 
 
 @dataclass
 class ToolDefinition:
     """Definition of a tool for the LLM."""
+
     name: str
     description: str
     parameters: Dict[str, Any]  # JSON Schema
@@ -214,13 +199,14 @@ class ToolDefinition:
                 "name": self.name,
                 "description": self.description,
                 "parameters": self.parameters,
-            }
+            },
         }
 
 
 @dataclass
 class CompletionResponse:
     """Response from a completion request."""
+
     content: str
     tool_calls: List[ToolCall] = field(default_factory=list)
     finish_reason: str = "stop"
@@ -252,7 +238,7 @@ class BaseProvider(ABC):
         messages: List[Message],
         tools: Optional[List[ToolDefinition]] = None,
         tool_choice: Optional[str] = None,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> CompletionResponse:
         """
         Generate a completion for the given messages.
@@ -275,7 +261,7 @@ class BaseProvider(ABC):
         tools: List[ToolDefinition],
         tool_executor: Callable[[ToolCall], Awaitable[ToolResult]],
         max_iterations: int = 10,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> tuple[CompletionResponse, List[Message]]:
         """
         Complete with automatic tool execution loop.

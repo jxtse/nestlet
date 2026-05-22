@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from inception.tool.base import (
     Tool,
@@ -97,7 +97,9 @@ class ParseWordTool(Tool):
                     # Check if it's a heading
                     if para.style.name.startswith("Heading"):
                         level = para.style.name.replace("Heading ", "")
-                        content_parts.append(f"\n{'#' * int(level) if level.isdigit() else '##'} {text}\n")
+                        content_parts.append(
+                            f"\n{'#' * int(level) if level.isdigit() else '##'} {text}\n"
+                        )
                     else:
                         content_parts.append(text)
 
@@ -177,14 +179,14 @@ class ParseExcelTool(Tool):
 
     def _detect_excel_format(self, file_path: str) -> str:
         """Detect the actual Excel format by reading file header."""
-        with open(file_path, 'rb') as f:
+        with open(file_path, "rb") as f:
             header = f.read(8)
 
         # Check for ZIP signature (xlsx format)
-        if header[:4] == b'PK\x03\x04':
+        if header[:4] == b"PK\x03\x04":
             return "xlsx"
         # Check for OLE2 signature (xls format)
-        elif header[:8] == b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1':
+        elif header[:8] == b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1":
             return "xls"
         else:
             return "unknown"
@@ -219,17 +221,19 @@ class ParseExcelTool(Tool):
         actual_format = self._detect_excel_format(file_path)
 
         try:
-            import json
-
             if actual_format == "xls":
                 # Use xlrd for legacy OLE2 format
-                return await self._parse_xls(file_path, sheet_name, max_rows, output_format, start_time)
+                return await self._parse_xls(
+                    file_path, sheet_name, max_rows, output_format, start_time
+                )
             elif actual_format == "xlsx":
                 # Use openpyxl for modern xlsx format
-                return await self._parse_xlsx(file_path, sheet_name, max_rows, output_format, start_time)
+                return await self._parse_xlsx(
+                    file_path, sheet_name, max_rows, output_format, start_time
+                )
             else:
                 return ToolResult.fail(
-                    error=f"Unknown Excel format. File header does not match xlsx or xls format.",
+                    error="Unknown Excel format. File header does not match xlsx or xls format.",
                     execution_time=time.time() - start_time,
                 )
 
@@ -244,7 +248,14 @@ class ParseExcelTool(Tool):
                 execution_time=time.time() - start_time,
             )
 
-    async def _parse_xls(self, file_path: str, sheet_name: Optional[str], max_rows: int, output_format: str, start_time: float) -> ToolResult:
+    async def _parse_xls(
+        self,
+        file_path: str,
+        sheet_name: Optional[str],
+        max_rows: int,
+        output_format: str,
+        start_time: float,
+    ) -> ToolResult:
         """Parse legacy .xls (OLE2) format using xlrd."""
         try:
             import xlrd
@@ -304,7 +315,14 @@ class ParseExcelTool(Tool):
                 execution_time=time.time() - start_time,
             )
 
-    async def _parse_xlsx(self, file_path: str, sheet_name: Optional[str], max_rows: int, output_format: str, start_time: float) -> ToolResult:
+    async def _parse_xlsx(
+        self,
+        file_path: str,
+        sheet_name: Optional[str],
+        max_rows: int,
+        output_format: str,
+        start_time: float,
+    ) -> ToolResult:
         """Parse modern .xlsx format using openpyxl."""
         from openpyxl import load_workbook
         import json

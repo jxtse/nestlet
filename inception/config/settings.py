@@ -18,6 +18,7 @@ import yaml
 
 class ProviderType(str, Enum):
     """Supported LLM providers."""
+
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
     AZURE = "azure"
@@ -26,6 +27,7 @@ class ProviderType(str, Enum):
 
 class ExecutionMode(str, Enum):
     """Code execution mode."""
+
     SANDBOX = "sandbox"  # Restricted execution
     TRUSTED = "trusted"  # Full access (for trusted environments)
 
@@ -33,6 +35,7 @@ class ExecutionMode(str, Enum):
 @dataclass
 class ProviderConfig:
     """LLM provider configuration."""
+
     type: ProviderType
     api_key: Optional[str] = None
     model: str = "gpt-4o-mini"
@@ -73,25 +76,54 @@ class ProviderConfig:
 # Allow common modules needed for file operations and data analysis
 DEFAULT_ALLOWED_MODULES: List[str] = [
     # Core Python modules
-    "math", "statistics", "collections", "itertools", "functools",
-    "datetime", "json", "re", "string", "textwrap",
+    "math",
+    "statistics",
+    "collections",
+    "itertools",
+    "functools",
+    "datetime",
+    "json",
+    "re",
+    "string",
+    "textwrap",
     # File system modules (needed for reading files, checking paths)
-    "os", "sys", "pathlib", "shutil", "glob", "fnmatch",
+    "os",
+    "sys",
+    "pathlib",
+    "shutil",
+    "glob",
+    "fnmatch",
     # Data analysis libraries
-    "numpy", "pandas", "scipy", "openpyxl", "xlrd", "olefile",
+    "numpy",
+    "pandas",
+    "scipy",
+    "openpyxl",
+    "xlrd",
+    "olefile",
     # Other useful modules
-    "importlib", "platform", "io", "csv", "pickle",
+    "importlib",
+    "platform",
+    "io",
+    "csv",
+    "pickle",
 ]
 # Only block network-related and truly dangerous modules
 DEFAULT_BLOCKED_MODULES: List[str] = [
-    "socket", "requests", "urllib", "http", "ftplib",
-    "smtplib", "telnetlib", "asyncio.subprocess",
+    "socket",
+    "requests",
+    "urllib",
+    "http",
+    "ftplib",
+    "smtplib",
+    "telnetlib",
+    "asyncio.subprocess",
 ]
 
 
 @dataclass
 class ExecutionConfig:
     """Code execution configuration."""
+
     mode: ExecutionMode = ExecutionMode.SANDBOX
     timeout: float = 30.0  # seconds
     max_memory_mb: int = 512
@@ -125,6 +157,7 @@ class ExecutionConfig:
 @dataclass
 class MemoryConfig:
     """Memory system configuration."""
+
     max_conversation_turns: int = 50
     max_working_memory_items: int = 20
     # Long-term memory persistence
@@ -149,6 +182,7 @@ class MemoryConfig:
 @dataclass
 class WebSearchConfig:
     """Web search configuration."""
+
     enabled: bool = True
     backend: str = "tavily"  # "tavily" | "duckduckgo"
     tavily_api_key: Optional[str] = None
@@ -182,7 +216,10 @@ class Settings:
     - YAML configuration file
     - Direct instantiation
     """
-    provider: ProviderConfig = field(default_factory=lambda: ProviderConfig(type=ProviderType.OPENAI))
+
+    provider: ProviderConfig = field(
+        default_factory=lambda: ProviderConfig(type=ProviderType.OPENAI)
+    )
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
     memory: MemoryConfig = field(default_factory=MemoryConfig)
     web_search: WebSearchConfig = field(default_factory=WebSearchConfig)

@@ -11,7 +11,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class Variable:
     """Represents a variable in the execution state."""
+
     name: str
     type_name: str
     value_preview: str
@@ -48,6 +49,7 @@ class Variable:
 @dataclass
 class DataArtifact:
     """Represents a data artifact (file, plot, etc.)."""
+
     name: str
     artifact_type: str  # "file", "plot", "dataframe", etc.
     path: Optional[Path] = None
@@ -59,6 +61,7 @@ class DataArtifact:
 @dataclass
 class ExecutionContext:
     """Context for a single execution step."""
+
     code: str
     result: Any
     success: bool
@@ -303,7 +306,8 @@ class StateManager:
                     "success": self._history[-1].success,
                     "error": self._history[-1].error,
                 }
-                if self._history else None
+                if self._history
+                else None
             ),
         }
 
@@ -320,10 +324,7 @@ class StateManager:
         """
         return {
             "timestamp": datetime.now().isoformat(),
-            "variables": {
-                name: var.to_dict()
-                for name, var in self._variables.items()
-            },
+            "variables": {name: var.to_dict() for name, var in self._variables.items()},
             "artifacts": {
                 name: {
                     "type": art.artifact_type,

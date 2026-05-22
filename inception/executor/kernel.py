@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ExecutionResult:
     """Result from code execution."""
+
     success: bool
     output: str = ""
     result: Any = None
@@ -115,8 +116,14 @@ except ImportError:
         # Default blocked modules - only block network and truly dangerous modules
         # Allow os, sys, pathlib for file operations needed by data analysis
         self._blocked_modules = blocked_modules or {
-            "socket", "requests", "urllib", "http", "ftplib",
-            "smtplib", "telnetlib", "asyncio.subprocess",
+            "socket",
+            "requests",
+            "urllib",
+            "http",
+            "ftplib",
+            "smtplib",
+            "telnetlib",
+            "asyncio.subprocess",
         }
         self._initialized = False
         self._history: List[str] = []
@@ -148,8 +155,12 @@ except ImportError:
         # Note: open is allowed for file reading (needed for data analysis)
         # eval/exec/compile are restricted to prevent code injection
         dangerous = [
-            "eval", "exec", "compile", "__import__",
-            "input", "breakpoint",
+            "eval",
+            "exec",
+            "compile",
+            "__import__",
+            "input",
+            "breakpoint",
         ]
         for name in dangerous:
             safe_builtins.pop(name, None)
@@ -285,6 +296,7 @@ except ImportError:
                 try:
                     # Try to get last expression
                     import ast
+
                     tree = ast.parse(code)
 
                     if tree.body and isinstance(tree.body[-1], ast.Expr):
@@ -335,9 +347,9 @@ except ImportError:
         """List all user-defined variables."""
         # Filter out modules, builtins, and special names
         return [
-            name for name in self._namespace.keys()
-            if not name.startswith("_")
-            and not isinstance(self._namespace[name], type(sys))
+            name
+            for name in self._namespace.keys()
+            if not name.startswith("_") and not isinstance(self._namespace[name], type(sys))
         ]
 
     def get_variable_info(self, name: str) -> Optional[Dict[str, Any]]:

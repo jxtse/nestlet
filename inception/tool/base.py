@@ -9,13 +9,14 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Type, Union
+from typing import Any, Dict, List, Optional
 
 from inception.provider.base import ToolDefinition
 
 
 class ParameterType(str, Enum):
     """Supported parameter types."""
+
     STRING = "string"
     INTEGER = "integer"
     NUMBER = "number"
@@ -27,6 +28,7 @@ class ParameterType(str, Enum):
 @dataclass
 class ParameterSpec:
     """Specification for a tool parameter."""
+
     name: str
     type: ParameterType
     description: str
@@ -52,8 +54,7 @@ class ParameterSpec:
             schema["items"] = {"type": self.items_type.value}
         if self.type == ParameterType.OBJECT and self.properties:
             schema["properties"] = {
-                name: spec.to_json_schema()
-                for name, spec in self.properties.items()
+                name: spec.to_json_schema() for name, spec in self.properties.items()
             }
         return schema
 
@@ -61,6 +62,7 @@ class ParameterSpec:
 @dataclass
 class ReturnSpec:
     """Specification for tool return value."""
+
     type: ParameterType
     description: str
     # For structured returns
@@ -74,8 +76,7 @@ class ReturnSpec:
         }
         if self.properties:
             schema["properties"] = {
-                name: spec.to_json_schema()
-                for name, spec in self.properties.items()
+                name: spec.to_json_schema() for name, spec in self.properties.items()
             }
         return schema
 
@@ -90,6 +91,7 @@ class ToolSpec:
     - Tool documentation
     - Validation
     """
+
     name: str
     description: str
     parameters: Dict[str, ParameterSpec] = field(default_factory=dict)
@@ -104,17 +106,11 @@ class ToolSpec:
 
     def to_json_schema(self) -> Dict[str, Any]:
         """Convert parameters to JSON Schema for LLM tool calling."""
-        required = [
-            name for name, spec in self.parameters.items()
-            if spec.required
-        ]
+        required = [name for name, spec in self.parameters.items() if spec.required]
 
         return {
             "type": "object",
-            "properties": {
-                name: spec.to_json_schema()
-                for name, spec in self.parameters.items()
-            },
+            "properties": {name: spec.to_json_schema() for name, spec in self.parameters.items()},
             "required": required,
         }
 
@@ -130,6 +126,7 @@ class ToolSpec:
 @dataclass
 class ToolResult:
     """Result from tool execution."""
+
     success: bool
     result: Any = None
     error: Optional[str] = None
@@ -197,7 +194,9 @@ class Tool(ABC):
                     return f"Parameter {name} must be a string"
                 elif param_spec.type == ParameterType.INTEGER and not isinstance(value, int):
                     return f"Parameter {name} must be an integer"
-                elif param_spec.type == ParameterType.NUMBER and not isinstance(value, (int, float)):
+                elif param_spec.type == ParameterType.NUMBER and not isinstance(
+                    value, (int, float)
+                ):
                     return f"Parameter {name} must be a number"
                 elif param_spec.type == ParameterType.BOOLEAN and not isinstance(value, bool):
                     return f"Parameter {name} must be a boolean"
@@ -261,22 +260,16 @@ class FunctionTool(Tool):
             else:
                 result = self._func(**kwargs)
 
-            return ToolResult.ok(
-                result=result,
-                execution_time=time.time() - start_time
-            )
+            return ToolResult.ok(result=result, execution_time=time.time() - start_time)
         except Exception as e:
-            return ToolResult.fail(
-                error=str(e),
-                execution_time=time.time() - start_time
-            )
+            return ToolResult.fail(error=str(e), execution_time=time.time() - start_time)
 
 
 def tool(
     name: Optional[str] = None,
     description: Optional[str] = None,
     category: str = "general",
-    **kwargs: Any
+    **kwargs: Any,
 ):
     """
     Decorator to create a tool from a function.
@@ -286,6 +279,7 @@ def tool(
         async def add(a: int, b: int) -> int:
             return a + b
     """
+
     def decorator(func):
         import inspect
         from typing import get_type_hints

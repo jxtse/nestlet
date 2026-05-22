@@ -9,11 +9,12 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List
 
 
 class TaskType(str, Enum):
     """Types of tasks the agent can handle."""
+
     COMPUTATION = "computation"  # Mathematical/numerical tasks
     DATA_ANALYSIS = "data_analysis"  # Data processing and analysis
     REASONING = "reasoning"  # Logical reasoning
@@ -27,6 +28,7 @@ class TaskType(str, Enum):
 @dataclass
 class TaskCharacteristics:
     """Characteristics of a task."""
+
     task_type: TaskType
     requires_precision: bool = False
     requires_iteration: bool = False
@@ -50,42 +52,100 @@ class CapabilityAssessor:
 
     # Patterns for task type detection
     COMPUTATION_PATTERNS = [
-        r"calculate", r"compute", r"sum", r"average", r"mean",
-        r"multiply", r"divide", r"add", r"subtract",
+        r"calculate",
+        r"compute",
+        r"sum",
+        r"average",
+        r"mean",
+        r"multiply",
+        r"divide",
+        r"add",
+        r"subtract",
         r"\d+\s*[\+\-\*\/\^]\s*\d+",  # Math expressions
-        r"what is \d+", r"how much is",
+        r"what is \d+",
+        r"how much is",
     ]
 
     DATA_ANALYSIS_PATTERNS = [
-        r"analyze", r"analysis", r"data", r"dataset",
-        r"statistics", r"correlation", r"distribution",
-        r"csv", r"excel", r"dataframe", r"table",
-        r"plot", r"chart", r"graph", r"visualize",
+        r"analyze",
+        r"analysis",
+        r"data",
+        r"dataset",
+        r"statistics",
+        r"correlation",
+        r"distribution",
+        r"csv",
+        r"excel",
+        r"dataframe",
+        r"table",
+        r"plot",
+        r"chart",
+        r"graph",
+        r"visualize",
     ]
 
     REASONING_PATTERNS = [
-        r"why", r"explain", r"reason", r"logic",
-        r"deduce", r"infer", r"conclude", r"because",
-        r"if.*then", r"therefore", r"thus",
+        r"why",
+        r"explain",
+        r"reason",
+        r"logic",
+        r"deduce",
+        r"infer",
+        r"conclude",
+        r"because",
+        r"if.*then",
+        r"therefore",
+        r"thus",
     ]
 
     CREATIVE_PATTERNS = [
-        r"write", r"create", r"generate", r"compose",
-        r"story", r"poem", r"essay", r"creative",
-        r"imagine", r"design", r"brainstorm",
+        r"write",
+        r"create",
+        r"generate",
+        r"compose",
+        r"story",
+        r"poem",
+        r"essay",
+        r"creative",
+        r"imagine",
+        r"design",
+        r"brainstorm",
     ]
 
     CODE_PATTERNS = [
-        r"code", r"function", r"program", r"script",
-        r"implement", r"algorithm", r"class", r"method",
-        r"python", r"javascript", r"programming",
+        r"code",
+        r"function",
+        r"program",
+        r"script",
+        r"implement",
+        r"algorithm",
+        r"class",
+        r"method",
+        r"python",
+        r"javascript",
+        r"programming",
     ]
 
     # Operations that need symbolic computation
     SYMBOLIC_OPERATIONS = {
-        "+", "-", "*", "/", "^", "**", "%",
-        "sqrt", "sin", "cos", "tan", "log", "exp",
-        "sum", "mean", "median", "std", "var",
+        "+",
+        "-",
+        "*",
+        "/",
+        "^",
+        "**",
+        "%",
+        "sqrt",
+        "sin",
+        "cos",
+        "tan",
+        "log",
+        "exp",
+        "sum",
+        "mean",
+        "median",
+        "std",
+        "var",
     }
 
     def __init__(self):
@@ -118,19 +178,17 @@ class CapabilityAssessor:
 
         # Determine characteristics
         requires_precision = (
-            task_type in (TaskType.COMPUTATION, TaskType.DATA_ANALYSIS) or
-            len(numbers) > 2 or
-            len(operations) > 0
+            task_type in (TaskType.COMPUTATION, TaskType.DATA_ANALYSIS)
+            or len(numbers) > 2
+            or len(operations) > 0
         )
 
         requires_iteration = any(
-            word in task_lower
-            for word in ["each", "every", "all", "iterate", "loop", "for each"]
+            word in task_lower for word in ["each", "every", "all", "iterate", "loop", "for each"]
         )
 
         requires_external_data = bool(data_refs) or any(
-            word in task_lower
-            for word in ["file", "url", "api", "database", "fetch"]
+            word in task_lower for word in ["file", "url", "api", "database", "fetch"]
         )
 
         requires_creativity = task_type in (TaskType.CREATIVE,)
@@ -164,10 +222,12 @@ class CapabilityAssessor:
         )
 
         # Record for learning
-        self._history.append({
-            "task": task,
-            "characteristics": characteristics,
-        })
+        self._history.append(
+            {
+                "task": task,
+                "characteristics": characteristics,
+            }
+        )
 
         return characteristics
 
@@ -229,7 +289,8 @@ class CapabilityAssessor:
                 # For word operators (sqrt, sin, cos, etc.), match as whole words
                 # Use word boundaries to avoid matching substrings
                 import re
-                pattern = r'\b' + re.escape(op) + r'\b'
+
+                pattern = r"\b" + re.escape(op) + r"\b"
                 if re.search(pattern, task, re.IGNORECASE):
                     operations.append(op)
 
@@ -330,7 +391,11 @@ class CapabilityAssessor:
         score = 0.5  # Base score
 
         # Neural is good for
-        if characteristics.task_type in (TaskType.REASONING, TaskType.CREATIVE, TaskType.CONVERSATION):
+        if characteristics.task_type in (
+            TaskType.REASONING,
+            TaskType.CREATIVE,
+            TaskType.CONVERSATION,
+        ):
             score += 0.3
 
         if characteristics.requires_creativity:
@@ -459,13 +524,29 @@ class CapabilityAssessor:
 
         # Check for semantic keywords
         semantic_keywords = [
-            "sentiment", "emotion", "feeling", "opinion",
-            "topic", "theme", "subject", "meaning",
-            "intent", "intention", "purpose",
-            "summarize", "summarise", "abstract",
-            "understand", "interpret", "comprehend",
-            "context", "nuance", "implication",
-            "tone", "style", "voice",
+            "sentiment",
+            "emotion",
+            "feeling",
+            "opinion",
+            "topic",
+            "theme",
+            "subject",
+            "meaning",
+            "intent",
+            "intention",
+            "purpose",
+            "summarize",
+            "summarise",
+            "abstract",
+            "understand",
+            "interpret",
+            "comprehend",
+            "context",
+            "nuance",
+            "implication",
+            "tone",
+            "style",
+            "voice",
         ]
 
         return any(kw in task_lower for kw in semantic_keywords)
@@ -506,10 +587,18 @@ class CapabilityAssessor:
 
         # Default: if task mentions "identify topics/themes" without predefined list, it's open-ended
         open_ended_keywords = [
-            "identify topics", "find topics", "discover topics",
-            "identify themes", "find themes", "discover themes",
-            "identify patterns", "find patterns", "discover patterns",
-            "what topics", "what themes", "what patterns",
+            "identify topics",
+            "find topics",
+            "discover topics",
+            "identify themes",
+            "find themes",
+            "discover themes",
+            "identify patterns",
+            "find patterns",
+            "discover patterns",
+            "what topics",
+            "what themes",
+            "what patterns",
         ]
 
         if any(kw in task_lower for kw in open_ended_keywords):

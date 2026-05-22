@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional
 
 class MemoryItemType(str, Enum):
     """Types of items in working memory."""
+
     TASK = "task"
     SUBTASK = "subtask"
     OBSERVATION = "observation"
@@ -27,6 +28,7 @@ class MemoryItemType(str, Enum):
 @dataclass
 class MemoryItem:
     """An item in working memory."""
+
     type: MemoryItemType
     content: Any
     name: Optional[str] = None
@@ -98,6 +100,7 @@ class WorkingMemory:
         expires_at = None
         if ttl_seconds:
             from datetime import timedelta
+
             expires_at = datetime.now() + timedelta(seconds=ttl_seconds)
 
         item = MemoryItem(
@@ -134,7 +137,8 @@ class WorkingMemory:
     def get_by_type(self, item_type: MemoryItemType) -> List[MemoryItem]:
         """Get all items of a specific type."""
         return [
-            item for item in self._items.values()
+            item
+            for item in self._items.values()
             if item.type == item_type and not item.is_expired()
         ]
 
@@ -327,24 +331,15 @@ class WorkingMemory:
                 {"name": item.name, "content": str(item.content)[:200]}
                 for item in self.get_by_type(MemoryItemType.RESULT)
             ],
-            "decisions": [
-                item.content
-                for item in self.get_by_type(MemoryItemType.DECISION)
-            ],
-            "errors": [
-                item.content
-                for item in self.get_by_type(MemoryItemType.ERROR)
-            ],
+            "decisions": [item.content for item in self.get_by_type(MemoryItemType.DECISION)],
+            "errors": [item.content for item in self.get_by_type(MemoryItemType.ERROR)],
             "total_items": len(self._items),
         }
 
     def _cleanup(self) -> None:
         """Remove expired items and trim to max size."""
         # Remove expired
-        expired = [
-            item_id for item_id, item in self._items.items()
-            if item.is_expired()
-        ]
+        expired = [item_id for item_id, item in self._items.items() if item.is_expired()]
         for item_id in expired:
             del self._items[item_id]
 

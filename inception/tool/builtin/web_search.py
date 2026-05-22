@@ -39,6 +39,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class SearchResult:
     """A single search result."""
+
     title: str
     url: str
     content: str
@@ -59,6 +60,7 @@ class SearchResult:
 @dataclass
 class SearchResponse:
     """Response from a search operation."""
+
     query: str
     mode: str
     total_results: int
@@ -133,13 +135,15 @@ class TavilyBackend:
                     data = await response.json()
                     results = []
                     for item in data.get("results", []):
-                        results.append(SearchResult(
-                            title=item.get("title", ""),
-                            url=item.get("url", ""),
-                            content=item.get("content", ""),
-                            score=item.get("score", 0.0),
-                            published_date=item.get("published_date"),
-                        ))
+                        results.append(
+                            SearchResult(
+                                title=item.get("title", ""),
+                                url=item.get("url", ""),
+                                content=item.get("content", ""),
+                                score=item.get("score", 0.0),
+                                published_date=item.get("published_date"),
+                            )
+                        )
                     return results
 
         except Exception as e:
@@ -170,17 +174,18 @@ class DuckDuckGoBackend:
             List of search results
         """
         try:
-            from duckduckgo_search import DDGS
+            from duckduckgo_search import DDGS  # noqa: F401  # availability check; used below
         except ImportError:
-            logger.error("duckduckgo-search not installed. Install with: uv pip install duckduckgo-search")
+            logger.error(
+                "duckduckgo-search not installed. Install with: uv pip install duckduckgo-search"
+            )
             return []
 
         try:
             # Run sync DuckDuckGo search in thread pool
             loop = asyncio.get_event_loop()
             results = await loop.run_in_executor(
-                None,
-                lambda: self._sync_search(query, max_results, region, time_range)
+                None, lambda: self._sync_search(query, max_results, region, time_range)
             )
             return results
 
@@ -207,12 +212,14 @@ class DuckDuckGoBackend:
                 max_results=max_results,
             )
             for item in search_results:
-                results.append(SearchResult(
-                    title=item.get("title", ""),
-                    url=item.get("href", ""),
-                    content=item.get("body", ""),
-                    score=0.0,  # DuckDuckGo doesn't provide scores
-                ))
+                results.append(
+                    SearchResult(
+                        title=item.get("title", ""),
+                        url=item.get("href", ""),
+                        content=item.get("body", ""),
+                        score=0.0,  # DuckDuckGo doesn't provide scores
+                    )
+                )
         return results
 
 

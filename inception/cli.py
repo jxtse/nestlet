@@ -17,7 +17,6 @@ from rich.prompt import Prompt
 
 from inception import HybridAgent, Settings
 
-
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -30,12 +29,14 @@ console = Console()
 
 async def interactive_session(agent: HybridAgent) -> None:
     """Run an interactive chat session with the agent."""
-    console.print(Panel.fit(
-        "[bold blue]Inception[/bold blue] - Neuro-Symbolic Agent\n"
-        "Type 'exit' or 'quit' to end the session.\n"
-        "Type 'reset' to clear the conversation.",
-        title="Welcome",
-    ))
+    console.print(
+        Panel.fit(
+            "[bold blue]Inception[/bold blue] - Neuro-Symbolic Agent\n"
+            "Type 'exit' or 'quit' to end the session.\n"
+            "Type 'reset' to clear the conversation.",
+            title="Welcome",
+        )
+    )
 
     while True:
         try:
@@ -56,31 +57,34 @@ async def interactive_session(agent: HybridAgent) -> None:
                 continue
 
             if user_input.lower() == "help":
-                console.print(Panel(
-                    "**Commands:**\n"
-                    "- `exit` / `quit` - End the session\n"
-                    "- `reset` - Clear conversation history\n"
-                    "- `help` - Show this help message\n\n"
-                    "**Features:**\n"
-                    "- Ask questions and get answers\n"
-                    "- Request calculations (I'll execute code)\n"
-                    "- Ask for data analysis\n"
-                    "- Create new tools for recurring tasks\n"
-                    "- Send images: `[image:path/to/image.png] your question`\n"
-                    "- Parse Office files: Ask to parse Word/Excel/PowerPoint/PDF files",
-                    title="Help",
-                ))
+                console.print(
+                    Panel(
+                        "**Commands:**\n"
+                        "- `exit` / `quit` - End the session\n"
+                        "- `reset` - Clear conversation history\n"
+                        "- `help` - Show this help message\n\n"
+                        "**Features:**\n"
+                        "- Ask questions and get answers\n"
+                        "- Request calculations (I'll execute code)\n"
+                        "- Ask for data analysis\n"
+                        "- Create new tools for recurring tasks\n"
+                        "- Send images: `[image:path/to/image.png] your question`\n"
+                        "- Parse Office files: Ask to parse Word/Excel/PowerPoint/PDF files",
+                        title="Help",
+                    )
+                )
                 continue
 
             # Parse images from input (format: [image:path] or [img:path])
             images = []
             import re
-            image_pattern = r'\[(?:image|img):([^\]]+)\]'
+
+            image_pattern = r"\[(?:image|img):([^\]]+)\]"
             image_matches = re.findall(image_pattern, user_input)
             if image_matches:
                 images = [m.strip() for m in image_matches]
                 # Remove image tags from input
-                user_input = re.sub(image_pattern, '', user_input).strip()
+                user_input = re.sub(image_pattern, "", user_input).strip()
                 if images:
                     console.print(f"[dim]📷 Attached {len(images)} image(s)[/dim]")
 
@@ -119,9 +123,7 @@ def main() -> int:
     """Main entry point."""
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Inception - Neuro-Symbolic General Agent"
-    )
+    parser = argparse.ArgumentParser(description="Inception - Neuro-Symbolic General Agent")
     parser.add_argument(
         "--config",
         type=Path,

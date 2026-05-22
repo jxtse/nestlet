@@ -8,7 +8,6 @@ import asyncio
 import logging
 from inception import HybridAgent, Settings
 
-
 logging.basicConfig(level=logging.INFO)
 
 
@@ -24,9 +23,7 @@ async def main():
 
     # Example 1: Simple calculation
     print("\n--- Example 1: Calculation ---")
-    response = await agent.chat(
-        "Calculate the average of these numbers: 15, 23, 42, 8, 31"
-    )
+    response = await agent.chat("Calculate the average of these numbers: 15, 23, 42, 8, 31")
     print(f"Response: {response}")
 
     # Example 2: Text analysis
@@ -37,9 +34,7 @@ async def main():
     programmed. It focuses on developing algorithms that can access data
     and use it to learn for themselves.
     """
-    response = await agent.chat(
-        f"Analyze this text and extract the key concepts:\n\n{sample_text}"
-    )
+    response = await agent.chat(f"Analyze this text and extract the key concepts:\n\n{sample_text}")
     print(f"Response: {response}")
 
     # Example 3: Data processing
@@ -52,16 +47,14 @@ async def main():
 
     # Example 4: Multi-step task
     print("\n--- Example 4: Multi-step Analysis ---")
-    response = await agent.chat(
-        """Analyze this sales data:
+    response = await agent.chat("""Analyze this sales data:
         Q1: 15000, Q2: 22000, Q3: 18000, Q4: 25000
 
         1. Calculate the total annual sales
         2. Find the average quarterly sales
         3. Identify the quarter with highest growth
         4. Calculate the growth percentage from Q1 to Q4
-        """
-    )
+        """)
     print(f"Response: {response}")
 
     # Reset for clean state

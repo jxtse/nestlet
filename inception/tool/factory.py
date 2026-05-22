@@ -11,7 +11,6 @@ Implements the LATM (LLMs as Tool Makers) paradigm:
 from __future__ import annotations
 
 import ast
-import hashlib
 import logging
 import textwrap
 import time
@@ -34,6 +33,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ValidationResult:
     """Result of tool code validation."""
+
     is_valid: bool
     errors: List[str]
     warnings: List[str]
@@ -43,6 +43,7 @@ class ValidationResult:
 @dataclass
 class TestResult:
     """Result of tool testing."""
+
     passed: bool
     output: Any = None
     error: Optional[str] = None
@@ -56,20 +57,35 @@ class CodeValidator:
 
     # Modules that should never be imported (network and dangerous modules only)
     BLOCKED_MODULES: Set[str] = {
-        "socket", "requests", "urllib", "http", "ftplib", "smtplib",
-        "telnetlib", "marshal", "ctypes",
+        "socket",
+        "requests",
+        "urllib",
+        "http",
+        "ftplib",
+        "smtplib",
+        "telnetlib",
+        "marshal",
+        "ctypes",
     }
 
     # Dangerous built-in functions (allow open for file reading)
     BLOCKED_BUILTINS: Set[str] = {
-        "eval", "exec", "compile", "__import__",
-        "input", "breakpoint",
+        "eval",
+        "exec",
+        "compile",
+        "__import__",
+        "input",
+        "breakpoint",
     }
 
     # Dangerous attributes
     BLOCKED_ATTRIBUTES: Set[str] = {
-        "__class__", "__bases__", "__subclasses__",
-        "__globals__", "__code__", "__builtins__",
+        "__class__",
+        "__bases__",
+        "__subclasses__",
+        "__globals__",
+        "__code__",
+        "__builtins__",
     }
 
     def __init__(
@@ -127,7 +143,9 @@ class CodeValidator:
                     errors.append(f"Blocked attribute access: {node.attr}")
 
         # Check for function definition
-        func_defs = [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+        func_defs = [
+            n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+        ]
         if not func_defs:
             errors.append("No function definition found in code")
         elif len(func_defs) > 1:
@@ -228,26 +246,59 @@ class ToolFactory:
         safe_globals = {
             "__builtins__": {
                 # Safe builtins
-                "abs": abs, "all": all, "any": any,
-                "bin": bin, "bool": bool, "bytes": bytes,
-                "chr": chr, "dict": dict, "divmod": divmod,
-                "enumerate": enumerate, "filter": filter,
-                "float": float, "format": format, "frozenset": frozenset,
-                "hash": hash, "hex": hex, "int": int, "isinstance": isinstance,
-                "issubclass": issubclass, "iter": iter, "len": len,
-                "list": list, "map": map, "max": max, "min": min,
-                "next": next, "oct": oct, "ord": ord, "pow": pow,
-                "print": print, "range": range, "repr": repr,
-                "reversed": reversed, "round": round, "set": set,
-                "slice": slice, "sorted": sorted, "str": str,
-                "sum": sum, "tuple": tuple, "type": type, "zip": zip,
+                "abs": abs,
+                "all": all,
+                "any": any,
+                "bin": bin,
+                "bool": bool,
+                "bytes": bytes,
+                "chr": chr,
+                "dict": dict,
+                "divmod": divmod,
+                "enumerate": enumerate,
+                "filter": filter,
+                "float": float,
+                "format": format,
+                "frozenset": frozenset,
+                "hash": hash,
+                "hex": hex,
+                "int": int,
+                "isinstance": isinstance,
+                "issubclass": issubclass,
+                "iter": iter,
+                "len": len,
+                "list": list,
+                "map": map,
+                "max": max,
+                "min": min,
+                "next": next,
+                "oct": oct,
+                "ord": ord,
+                "pow": pow,
+                "print": print,
+                "range": range,
+                "repr": repr,
+                "reversed": reversed,
+                "round": round,
+                "set": set,
+                "slice": slice,
+                "sorted": sorted,
+                "str": str,
+                "sum": sum,
+                "tuple": tuple,
+                "type": type,
+                "zip": zip,
                 # File operations (needed for data analysis)
                 "open": open,
                 # Exceptions
-                "Exception": Exception, "ValueError": ValueError,
-                "TypeError": TypeError, "KeyError": KeyError,
-                "IndexError": IndexError, "RuntimeError": RuntimeError,
-                "FileNotFoundError": FileNotFoundError, "IOError": IOError,
+                "Exception": Exception,
+                "ValueError": ValueError,
+                "TypeError": TypeError,
+                "KeyError": KeyError,
+                "IndexError": IndexError,
+                "RuntimeError": RuntimeError,
+                "FileNotFoundError": FileNotFoundError,
+                "IOError": IOError,
             },
             # Safe modules
             "math": math,
@@ -274,6 +325,7 @@ class ToolFactory:
         # Try to add numpy/pandas if available
         try:
             import numpy as np
+
             safe_globals["np"] = np
             safe_globals["numpy"] = np
         except ImportError:
@@ -281,6 +333,7 @@ class ToolFactory:
 
         try:
             import pandas as pd
+
             safe_globals["pd"] = pd
             safe_globals["pandas"] = pd
         except ImportError:

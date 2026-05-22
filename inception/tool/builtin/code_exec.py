@@ -165,41 +165,51 @@ class CodeAnalysisTool(Tool):
 
             for node in ast.walk(tree):
                 if isinstance(node, ast.FunctionDef):
-                    functions.append({
-                        "name": node.name,
-                        "args": [arg.arg for arg in node.args.args],
-                        "lineno": node.lineno,
-                    })
+                    functions.append(
+                        {
+                            "name": node.name,
+                            "args": [arg.arg for arg in node.args.args],
+                            "lineno": node.lineno,
+                        }
+                    )
                 elif isinstance(node, ast.AsyncFunctionDef):
-                    functions.append({
-                        "name": node.name,
-                        "args": [arg.arg for arg in node.args.args],
-                        "lineno": node.lineno,
-                        "async": True,
-                    })
+                    functions.append(
+                        {
+                            "name": node.name,
+                            "args": [arg.arg for arg in node.args.args],
+                            "lineno": node.lineno,
+                            "async": True,
+                        }
+                    )
                 elif isinstance(node, ast.ClassDef):
-                    classes.append({
-                        "name": node.name,
-                        "lineno": node.lineno,
-                    })
+                    classes.append(
+                        {
+                            "name": node.name,
+                            "lineno": node.lineno,
+                        }
+                    )
                 elif isinstance(node, ast.Import):
                     imports.extend(alias.name for alias in node.names)
                 elif isinstance(node, ast.ImportFrom):
                     if node.module:
                         imports.append(node.module)
 
-            return ToolResult.ok(result={
-                "valid": True,
-                "functions": functions,
-                "classes": classes,
-                "imports": imports,
-                "line_count": len(code.splitlines()),
-            })
+            return ToolResult.ok(
+                result={
+                    "valid": True,
+                    "functions": functions,
+                    "classes": classes,
+                    "imports": imports,
+                    "line_count": len(code.splitlines()),
+                }
+            )
 
         except SyntaxError as e:
-            return ToolResult.ok(result={
-                "valid": False,
-                "error": str(e),
-                "line": e.lineno,
-                "offset": e.offset,
-            })
+            return ToolResult.ok(
+                result={
+                    "valid": False,
+                    "error": str(e),
+                    "line": e.lineno,
+                    "offset": e.offset,
+                }
+            )

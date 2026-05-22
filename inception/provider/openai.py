@@ -95,10 +95,7 @@ class OpenAIProvider(BaseProvider):
                     {
                         "id": tc.id,
                         "type": "function",
-                        "function": {
-                            "name": tc.name,
-                            "arguments": json.dumps(tc.arguments)
-                        }
+                        "function": {"name": tc.name, "arguments": json.dumps(tc.arguments)},
                     }
                     for tc in msg.tool_calls
                 ]
@@ -118,11 +115,7 @@ class OpenAIProvider(BaseProvider):
                 logger.warning(f"Failed to parse tool arguments: {tc.function.arguments}")
                 arguments = {}
 
-            result.append(ToolCall(
-                id=tc.id,
-                name=tc.function.name,
-                arguments=arguments
-            ))
+            result.append(ToolCall(id=tc.id, name=tc.function.name, arguments=arguments))
         return result
 
     async def complete(
@@ -130,7 +123,7 @@ class OpenAIProvider(BaseProvider):
         messages: List[Message],
         tools: Optional[List[ToolDefinition]] = None,
         tool_choice: Optional[str] = None,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> CompletionResponse:
         """
         Generate a completion.
@@ -160,10 +153,7 @@ class OpenAIProvider(BaseProvider):
                     params["tool_choice"] = tool_choice
                 else:
                     # Specific tool name
-                    params["tool_choice"] = {
-                        "type": "function",
-                        "function": {"name": tool_choice}
-                    }
+                    params["tool_choice"] = {"type": "function", "function": {"name": tool_choice}}
 
         # Make the API call
         logger.debug(f"Calling OpenAI API with model: {self.model_name}")
@@ -189,7 +179,7 @@ class OpenAIProvider(BaseProvider):
         tools: List[ToolDefinition],
         tool_executor: Callable[[ToolCall], Awaitable[ToolResult]],
         max_iterations: int = 10,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> tuple[CompletionResponse, List[Message]]:
         """
         Complete with automatic tool execution loop.
@@ -210,17 +200,16 @@ class OpenAIProvider(BaseProvider):
         while iterations < max_iterations:
             # Get completion
             response = await self.complete(
-                messages=history,
-                tools=tools,
-                tool_choice="auto",
-                **kwargs
+                messages=history, tools=tools, tool_choice="auto", **kwargs
             )
 
             # Add assistant message to history
-            history.append(Message.assistant(
-                content=response.content,
-                tool_calls=response.tool_calls if response.has_tool_calls else None
-            ))
+            history.append(
+                Message.assistant(
+                    content=response.content,
+                    tool_calls=response.tool_calls if response.has_tool_calls else None,
+                )
+            )
 
             # Check if we should stop
             if not response.has_tool_calls:

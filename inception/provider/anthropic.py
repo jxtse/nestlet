@@ -6,7 +6,6 @@ Supports Claude models via the Anthropic API.
 
 from __future__ import annotations
 
-import json
 import logging
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
@@ -78,23 +77,29 @@ class AnthropicProvider(BaseProvider):
                     content.append({"type": "text", "text": msg.content})
                 if msg.tool_calls:
                     for tc in msg.tool_calls:
-                        content.append({
-                            "type": "tool_use",
-                            "id": tc.id,
-                            "name": tc.name,
-                            "input": tc.arguments,
-                        })
+                        content.append(
+                            {
+                                "type": "tool_use",
+                                "id": tc.id,
+                                "name": tc.name,
+                                "input": tc.arguments,
+                            }
+                        )
                 converted.append({"role": "assistant", "content": content or msg.content})
             elif msg.role == MessageRole.TOOL:
                 # Find the last user message or create a new one with tool result
-                converted.append({
-                    "role": "user",
-                    "content": [{
-                        "type": "tool_result",
-                        "tool_use_id": msg.tool_call_id,
-                        "content": msg.content,
-                    }]
-                })
+                converted.append(
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": msg.tool_call_id,
+                                "content": msg.content,
+                            }
+                        ],
+                    }
+                )
 
         return system_prompt, converted
 
@@ -118,11 +123,13 @@ class AnthropicProvider(BaseProvider):
             if block.type == "text":
                 content_parts.append(block.text)
             elif block.type == "tool_use":
-                tool_calls.append(ToolCall(
-                    id=block.id,
-                    name=block.name,
-                    arguments=block.input,
-                ))
+                tool_calls.append(
+                    ToolCall(
+                        id=block.id,
+                        name=block.name,
+                        arguments=block.input,
+                    )
+                )
 
         return CompletionResponse(
             content="\n".join(content_parts),
@@ -132,7 +139,8 @@ class AnthropicProvider(BaseProvider):
             completion_tokens=response.usage.output_tokens if response.usage else 0,
             total_tokens=(
                 (response.usage.input_tokens + response.usage.output_tokens)
-                if response.usage else 0
+                if response.usage
+                else 0
             ),
         )
 
@@ -141,7 +149,7 @@ class AnthropicProvider(BaseProvider):
         messages: List[Message],
         tools: Optional[List[ToolDefinition]] = None,
         tool_choice: Optional[str] = None,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> CompletionResponse:
         """
         Generate a completion.
@@ -190,7 +198,7 @@ class AnthropicProvider(BaseProvider):
         tools: List[ToolDefinition],
         tool_executor: Callable[[ToolCall], Awaitable[ToolResult]],
         max_iterations: int = 10,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> tuple[CompletionResponse, List[Message]]:
         """
         Complete with automatic tool execution loop.
@@ -210,17 +218,16 @@ class AnthropicProvider(BaseProvider):
 
         while iterations < max_iterations:
             response = await self.complete(
-                messages=history,
-                tools=tools,
-                tool_choice="auto",
-                **kwargs
+                messages=history, tools=tools, tool_choice="auto", **kwargs
             )
 
             # Add assistant message
-            history.append(Message.assistant(
-                content=response.content,
-                tool_calls=response.tool_calls if response.has_tool_calls else None
-            ))
+            history.append(
+                Message.assistant(
+                    content=response.content,
+                    tool_calls=response.tool_calls if response.has_tool_calls else None,
+                )
+            )
 
             if not response.has_tool_calls:
                 return response, history

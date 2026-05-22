@@ -7,7 +7,7 @@ Provides safe file operations within a workspace.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, Optional
 
 import aiofiles
 
@@ -195,11 +195,13 @@ class WriteFileTool(Tool):
             async with aiofiles.open(full_path, mode, encoding=encoding) as f:
                 await f.write(content)
 
-            return ToolResult.ok(result={
-                "path": str(full_path.relative_to(self._workspace)),
-                "bytes_written": len(content.encode(encoding)),
-                "mode": "appended" if append else "written",
-            })
+            return ToolResult.ok(
+                result={
+                    "path": str(full_path.relative_to(self._workspace)),
+                    "bytes_written": len(content.encode(encoding)),
+                    "mode": "appended" if append else "written",
+                }
+            )
         except Exception as e:
             return ToolResult.fail(f"Failed to write file: {e}")
 
@@ -297,13 +299,15 @@ class ListDirectoryTool(Tool):
 
             for item in items:
                 rel_path = item.relative_to(self._workspace)
-                entries.append({
-                    "name": item.name,
-                    "path": str(rel_path),
-                    "is_file": item.is_file(),
-                    "is_dir": item.is_dir(),
-                    "size": item.stat().st_size if item.is_file() else None,
-                })
+                entries.append(
+                    {
+                        "name": item.name,
+                        "path": str(rel_path),
+                        "is_file": item.is_file(),
+                        "is_dir": item.is_dir(),
+                        "size": item.stat().st_size if item.is_file() else None,
+                    }
+                )
 
             return ToolResult.ok(result=entries)
         except Exception as e:

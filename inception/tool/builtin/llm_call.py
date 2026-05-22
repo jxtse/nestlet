@@ -291,7 +291,9 @@ class AnalyzeTextTool(Tool):
             return ToolResult.fail("No text provided")
 
         if not instruction:
-            return ToolResult.fail("No instruction provided. Please specify what analysis to perform.")
+            return ToolResult.fail(
+                "No instruction provided. Please specify what analysis to perform."
+            )
 
         # Build the prompt
         prompt = f"{instruction}\n\nText:\n{text}"
@@ -322,6 +324,7 @@ class AnalyzeTextTool(Tool):
             # Process response based on output format
             if output_format == "json":
                 import json
+
                 try:
                     # Try to extract JSON from response (handle markdown code blocks)
                     content = response.content.strip()
@@ -333,7 +336,12 @@ class AnalyzeTextTool(Tool):
                     return ToolResult.ok(result=result)
                 except json.JSONDecodeError:
                     # Return raw response if JSON parsing fails
-                    return ToolResult.ok(result={"raw_response": response.content, "parse_error": "Failed to parse as JSON"})
+                    return ToolResult.ok(
+                        result={
+                            "raw_response": response.content,
+                            "parse_error": "Failed to parse as JSON",
+                        }
+                    )
             else:
                 return ToolResult.ok(result=response.content)
 

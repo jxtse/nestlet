@@ -16,6 +16,7 @@ from inception.provider.base import Message, MessageRole, ImageContent
 @dataclass
 class ConversationTurn:
     """A single turn in the conversation."""
+
     role: MessageRole
     content: str
     timestamp: datetime = field(default_factory=datetime.now)
@@ -142,11 +143,13 @@ class ConversationMemory:
         turn = ConversationTurn(
             role=MessageRole.TOOL,
             content=result,
-            tool_results=[{
-                "tool_call_id": tool_call_id,
-                "name": name,
-                "result": result,
-            }],
+            tool_results=[
+                {
+                    "tool_call_id": tool_call_id,
+                    "name": name,
+                    "result": result,
+                }
+            ],
             metadata=metadata or {},
         )
         self._add_turn(turn)
@@ -186,9 +189,7 @@ class ConversationMemory:
 
         # Add summary if available
         if self._summary:
-            messages.append(Message.system(
-                f"Summary of earlier conversation:\n{self._summary}"
-            ))
+            messages.append(Message.system(f"Summary of earlier conversation:\n{self._summary}"))
 
         # Add conversation turns
         turns = self._turns
@@ -199,11 +200,13 @@ class ConversationMemory:
             if turn.role == MessageRole.TOOL and turn.tool_results:
                 # Add tool result messages
                 for tr in turn.tool_results:
-                    messages.append(Message.tool(
-                        content=tr["result"],
-                        tool_call_id=tr["tool_call_id"],
-                        name=tr["name"],
-                    ))
+                    messages.append(
+                        Message.tool(
+                            content=tr["result"],
+                            tool_call_id=tr["tool_call_id"],
+                            name=tr["name"],
+                        )
+                    )
             else:
                 messages.append(turn.to_message())
 

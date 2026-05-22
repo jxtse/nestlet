@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 class TaskStatus(str, Enum):
     """Task execution status."""
+
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
@@ -30,6 +31,7 @@ class TaskStatus(str, Enum):
 @dataclass
 class SubTask:
     """A subtask within a larger task."""
+
     id: str
     description: str
     status: TaskStatus = TaskStatus.PENDING
@@ -61,6 +63,7 @@ class SubTask:
 @dataclass
 class Task:
     """A task to be executed."""
+
     description: str
     subtasks: List[SubTask] = field(default_factory=list)
     status: TaskStatus = TaskStatus.PENDING
@@ -72,10 +75,7 @@ class Task:
 
     def get_next_subtask(self) -> Optional[SubTask]:
         """Get the next subtask ready for execution."""
-        completed = {
-            st.id for st in self.subtasks
-            if st.status == TaskStatus.COMPLETED
-        }
+        completed = {st.id for st in self.subtasks if st.status == TaskStatus.COMPLETED}
 
         for subtask in self.subtasks:
             if subtask.status == TaskStatus.PENDING and subtask.is_ready(completed):
@@ -88,10 +88,7 @@ class Task:
         if not self.subtasks:
             return 0.0
 
-        completed = sum(
-            1 for st in self.subtasks
-            if st.status == TaskStatus.COMPLETED
-        )
+        completed = sum(1 for st in self.subtasks if st.status == TaskStatus.COMPLETED)
         return completed / len(self.subtasks)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -181,9 +178,7 @@ class TaskDecomposer:
 
         # Call LLM
         messages = [
-            Message.system(
-                "You are a task planning assistant. Always respond with valid JSON."
-            ),
+            Message.system("You are a task planning assistant. Always respond with valid JSON."),
             Message.user(prompt),
         ]
 
@@ -198,6 +193,7 @@ class TaskDecomposer:
         except json.JSONDecodeError:
             # Try to extract JSON from response
             import re
+
             json_match = re.search(r"\{.*\}", response.content, re.DOTALL)
             if json_match:
                 result = json.loads(json_match.group())
@@ -206,13 +202,15 @@ class TaskDecomposer:
                 result = {
                     "analysis": "Could not decompose task",
                     "complexity": 0.5,
-                    "subtasks": [{
-                        "id": "task_1",
-                        "description": task_description,
-                        "depends_on": [],
-                        "approach": "neural_reasoning",
-                        "tools": [],
-                    }],
+                    "subtasks": [
+                        {
+                            "id": "task_1",
+                            "description": task_description,
+                            "depends_on": [],
+                            "approach": "neural_reasoning",
+                            "tools": [],
+                        }
+                    ],
                 }
 
         # Create Task object
@@ -311,14 +309,28 @@ Provide a refined version as JSON:
 
         # Tasks without step indicators are often simple
         step_indicators = [
-            "first", "then", "next", "after", "finally",
-            "step", "steps", "1.", "2.", "3.",
+            "first",
+            "then",
+            "next",
+            "after",
+            "finally",
+            "step",
+            "steps",
+            "1.",
+            "2.",
+            "3.",
         ]
         if not any(ind in task_description.lower() for ind in step_indicators):
             # Check for complexity indicators
             complexity_indicators = [
-                "analyze", "compare", "process", "transform",
-                "multiple", "several", "each", "all",
+                "analyze",
+                "compare",
+                "process",
+                "transform",
+                "multiple",
+                "several",
+                "each",
+                "all",
             ]
             if not any(ind in task_description.lower() for ind in complexity_indicators):
                 return True

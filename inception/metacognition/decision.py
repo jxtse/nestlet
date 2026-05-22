@@ -21,6 +21,7 @@ from inception.metacognition.data_estimator import (
 
 class ComputationMode(str, Enum):
     """Computation modes."""
+
     NEURAL = "neural"  # LLM-based reasoning
     SYMBOLIC = "symbolic"  # Code execution
     HYBRID = "hybrid"  # Both
@@ -30,6 +31,7 @@ class ComputationMode(str, Enum):
 @dataclass
 class Decision:
     """A computation mode decision."""
+
     mode: ComputationMode
     confidence: float
     reasoning: str
@@ -47,6 +49,7 @@ class EnhancedDecision(Decision):
     Extends the base Decision with additional information for handling
     large datasets and semantic tasks.
     """
+
     # Data scale information
     data_estimate: Optional[DataSizeEstimate] = None
     # Processing strategy
@@ -145,7 +148,9 @@ class ComputationDecider:
         self._data_estimator = data_estimator or DataSizeEstimator()
         self._decision_history: List[Dict[str, Any]] = []
 
-    def decide(self, task: str, execution_context: Optional[Dict[str, Any]] = None) -> EnhancedDecision:
+    def decide(
+        self, task: str, execution_context: Optional[Dict[str, Any]] = None
+    ) -> EnhancedDecision:
         """
         Decide the computation mode for a task.
 
@@ -253,14 +258,16 @@ class ComputationDecider:
         )
 
         # Record decision
-        self._decision_history.append({
-            "task": task,
-            "characteristics": characteristics,
-            "data_estimate": data_estimate,
-            "neuro_fit": neuro_fit,
-            "symbolic_fit": symbolic_fit,
-            "decision": enhanced_decision,
-        })
+        self._decision_history.append(
+            {
+                "task": task,
+                "characteristics": characteristics,
+                "data_estimate": data_estimate,
+                "neuro_fit": neuro_fit,
+                "symbolic_fit": symbolic_fit,
+                "decision": enhanced_decision,
+            }
+        )
 
         return enhanced_decision
 
@@ -297,7 +304,9 @@ class ComputationDecider:
         if characteristics.requires_creativity:
             reasons.append("Task requires creative generation")
         if characteristics.task_type.value in ("reasoning", "conversation", "creative"):
-            reasons.append(f"Task type '{characteristics.task_type.value}' suits neural computation")
+            reasons.append(
+                f"Task type '{characteristics.task_type.value}' suits neural computation"
+            )
         if not characteristics.requires_precision:
             reasons.append("Precision is not critical")
 
@@ -352,21 +361,27 @@ class ComputationDecider:
         steps = []
 
         # Usually: neural for planning, symbolic for execution
-        steps.append({
-            "mode": ComputationMode.NEURAL,
-            "purpose": "Analyze and plan approach",
-        })
+        steps.append(
+            {
+                "mode": ComputationMode.NEURAL,
+                "purpose": "Analyze and plan approach",
+            }
+        )
 
         if characteristics.requires_precision or characteristics.operations:
-            steps.append({
-                "mode": ComputationMode.SYMBOLIC,
-                "purpose": "Execute precise computation",
-            })
+            steps.append(
+                {
+                    "mode": ComputationMode.SYMBOLIC,
+                    "purpose": "Execute precise computation",
+                }
+            )
 
-        steps.append({
-            "mode": ComputationMode.NEURAL,
-            "purpose": "Interpret and present results",
-        })
+        steps.append(
+            {
+                "mode": ComputationMode.NEURAL,
+                "purpose": "Interpret and present results",
+            }
+        )
 
         return Decision(
             mode=ComputationMode.HYBRID,

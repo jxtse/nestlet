@@ -58,7 +58,9 @@ def register_builtin_tools(registry, kernel=None, provider=None, workspace=None,
 
     # Web search
     if settings and settings.web_search.enabled:
-        registry.register(WebSearchTool(
-            config=settings.web_search,
-            provider=provider,
-        ))
+        registry.register(
+            WebSearchTool(
+                config=settings.web_search,
+                provider=provider,
+            )
+        )

@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional
 
 class ActionType(str, Enum):
     """Types of actions an agent can take."""
+
     TOOL_CALL = "tool_call"  # Execute a tool
     CODE_EXEC = "code_exec"  # Execute code directly
     LLM_CALL = "llm_call"  # Make an LLM call
@@ -31,6 +32,7 @@ class Context:
 
     Contains all information the agent needs to make decisions.
     """
+
     # Current user request
     user_input: str
     # Conversation history summary
@@ -76,10 +78,7 @@ class Context:
         if self.execution_state:
             state = self.execution_state
             if state.get("variables"):
-                vars_info = [
-                    f"{name}: {info['type']}"
-                    for name, info in state["variables"].items()
-                ]
+                vars_info = [f"{name}: {info['type']}" for name, info in state["variables"].items()]
                 parts.append(f"Variables: {', '.join(vars_info)}")
 
         if self.available_tools:
@@ -91,6 +90,7 @@ class Context:
 @dataclass
 class ThinkResult:
     """Result of agent thinking/reasoning."""
+
     # Reasoning trace
     reasoning: str
     # Decided action
@@ -106,6 +106,7 @@ class ThinkResult:
 @dataclass
 class Action:
     """An action to be executed."""
+
     type: ActionType
     # Action-specific data
     tool_name: Optional[str] = None
@@ -145,13 +146,14 @@ class Action:
                 "tool_name": name,
                 "tool_description": description,
                 "tool_code": code,
-            }
+            },
         )
 
 
 @dataclass
 class ActionResult:
     """Result of executing an action."""
+
     success: bool
     result: Any = None
     error: Optional[str] = None
