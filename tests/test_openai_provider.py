@@ -7,7 +7,7 @@ import json
 import pytest
 
 from inception.config.settings import ProviderConfig, ProviderType
-from inception.provider.base import Message, ToolCall, ToolDefinition
+from inception.provider.base import ImageContent, Message, ToolCall, ToolDefinition, ToolResult
 
 
 @pytest.fixture
@@ -182,3 +182,116 @@ def test_tool_definition_responses_shape_is_flat():
     # And the legacy nested form still works for the Chat path.
     nested = td.to_dict()
     assert nested["function"]["name"] == "search"
+
+
+# ----------------------------------------------------------- image translation
+
+
+def test_responses_input_translates_image_url(make_provider):
+    p = make_provider("gpt-5.5")
+    msg = Message.user(
+        "what is in this image?",
+        images=[ImageContent(url="https://example.com/cat.png")],
+    )
+    _, items = p._convert_messages_to_responses_input([msg])
+    assert items == [
+        {
+            "role": "user",
+            "content": [
+                {"type": "input_text", "text": "what is in this image?"},
+                {"type": "input_image", "image_url": "https://example.com/cat.png"},
+            ],
+        }
+    ]
+
+
+def test_responses_input_translates_base64_image(make_provider):
+    p = make_provider("gpt-5.5")
+    msg = Message.user(
+        "describe",
+        images=[ImageContent(base64_data="AAAA", media_type="image/jpeg")],
+    )
+    _, items = p._convert_messages_to_responses_input([msg])
+    assert items[0]["content"][1] == {
+        "type": "input_image",
+        "image_url": "data:image/jpeg;base64,AAAA",
+    }
+
+
+# ----------------------------------------------------------- tool loop re-feed
+
+
+@pytest.mark.asyncio
+async def test_responses_tool_loop_refeeds_raw_output(make_provider, monkeypatch):
+    """Verify reasoning items + function_call items from prior turn are re-fed."""
+    p = make_provider("gpt-5.5", reasoning_effort="medium")
+
+    reasoning_item = {"type": "reasoning", "id": "rs_1", "summary": []}
+    function_call_item = {
+        "type": "function_call",
+        "call_id": "call_a",
+        "id": "fc_1",
+        "name": "lookup",
+        "arguments": json.dumps({"q": "x"}),
+    }
+    final_message_item = {
+        "type": "message",
+        "content": [{"type": "output_text", "text": "done"}],
+    }
+
+    calls: list[dict] = []
+
+    class _StubUsage:
+        input_tokens = 0
+        output_tokens = 0
+        total_tokens = 0
+
+    class _StubResponse:
+        def __init__(self, output):
+            self.output = output
+            self.usage = _StubUsage()
+
+    responses_to_return = [
+        _StubResponse([reasoning_item, function_call_item]),
+        _StubResponse([final_message_item]),
+    ]
+
+    async def fake_create(**params):
+        calls.append(params)
+        return responses_to_return.pop(0)
+
+    monkeypatch.setattr(p._client.responses, "create", fake_create)
+
+    async def tool_executor(tc: ToolCall) -> ToolResult:
+        return ToolResult(tool_call_id=tc.id, name=tc.name, result="x-result")
+
+    tools = [ToolDefinition(name="lookup", description="", parameters={})]
+    response, history = await p.complete_with_tools(
+        messages=[Message.user("find x")],
+        tools=tools,
+        tool_executor=tool_executor,
+    )
+
+    assert response.content == "done"
+    assert len(calls) == 2
+
+    second_input = calls[1]["input"]
+    # Original user message
+    assert second_input[0] == {"role": "user", "content": "find x"}
+    # Reasoning item from first response must be present before the tool output
+    assert reasoning_item in second_input
+    assert function_call_item in second_input
+    # function_call_output for the tool we executed
+    assert {
+        "type": "function_call_output",
+        "call_id": "call_a",
+        "output": "x-result",
+    } in second_input
+    # Reasoning must come before its function_call_output
+    reasoning_idx = second_input.index(reasoning_item)
+    output_idx = next(
+        i
+        for i, it in enumerate(second_input)
+        if isinstance(it, dict) and it.get("type") == "function_call_output"
+    )
+    assert reasoning_idx < output_idx

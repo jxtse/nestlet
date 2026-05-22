@@ -20,7 +20,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "openai>=1.42.0",           # OpenAI API
+    "openai>=1.66.0",           # OpenAI API (>=1.66 ships client.responses for Responses API)
     "anthropic>=0.34.0",        # Anthropic API
     "pydantic>=2.8.0",          # Data validation
     "pyyaml>=6.0",              # YAML configuration

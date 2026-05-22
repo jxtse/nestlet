@@ -227,9 +227,20 @@ class OpenAIProvider(BaseProvider):
                         }
                     )
                 continue
-            # Plain user / assistant text. Images are not currently translated
-            # on the Responses path — Chat Completions remains the multimodal
-            # path for gpt-4o-style models.
+            if msg.role == MessageRole.USER and msg.images:
+                content_blocks: List[Dict[str, Any]] = []
+                if msg.content:
+                    content_blocks.append({"type": "input_text", "text": msg.content})
+                for img in msg.images:
+                    if img.url:
+                        image_url = img.url
+                    elif img.base64_data:
+                        image_url = f"data:{img.media_type};base64,{img.base64_data}"
+                    else:
+                        continue
+                    content_blocks.append({"type": "input_image", "image_url": image_url})
+                items.append({"role": "user", "content": content_blocks})
+                continue
             items.append({"role": msg.role.value, "content": msg.content})
 
         instructions = "\n\n".join(instructions_parts) if instructions_parts else None
@@ -275,9 +286,14 @@ class OpenAIProvider(BaseProvider):
         messages: List[Message],
         tools: Optional[List[ToolDefinition]],
         tool_choice: Optional[str],
+        input_items: Optional[List[Dict[str, Any]]] = None,
+        instructions_override: Optional[str] = None,
         **kwargs: Any,
     ) -> CompletionResponse:
-        instructions, input_items = self._convert_messages_to_responses_input(messages)
+        if input_items is None:
+            instructions, input_items = self._convert_messages_to_responses_input(messages)
+        else:
+            instructions = instructions_override
 
         params: Dict[str, Any] = {
             "model": self.model_name,
@@ -347,18 +363,34 @@ class OpenAIProvider(BaseProvider):
     ) -> tuple[CompletionResponse, List[Message]]:
         """Drive the chat-style tool loop using whichever API surface is active.
 
-        We keep the public ``Message``-based interface so callers don't need to
-        know which API is in play. The Responses path stitches conversation
-        state back into ``Message`` objects (assistant text + tool_calls, tool
-        result), so subsequent calls re-derive the proper ``input`` shape via
-        ``_convert_messages_to_responses_input``.
+        On the Responses path we maintain a running ``input`` list and re-feed
+        the raw output items (including ``reasoning`` items) per OpenAI's
+        requirement: any reasoning item returned alongside a tool call must be
+        passed back with the corresponding ``function_call_output``, otherwise
+        the next request 400s.
         """
+        if self._use_responses_api():
+            return await self._complete_with_tools_responses(
+                messages, tools, tool_executor, max_iterations, **kwargs
+            )
+        return await self._complete_with_tools_chat(
+            messages, tools, tool_executor, max_iterations, **kwargs
+        )
+
+    async def _complete_with_tools_chat(
+        self,
+        messages: List[Message],
+        tools: List[ToolDefinition],
+        tool_executor: Callable[[ToolCall], Awaitable[ToolResult]],
+        max_iterations: int,
+        **kwargs: Any,
+    ) -> tuple[CompletionResponse, List[Message]]:
         history = list(messages)
         iterations = 0
         response: Optional[CompletionResponse] = None
 
         while iterations < max_iterations:
-            response = await self.complete(
+            response = await self._complete_chat(
                 messages=history, tools=tools, tool_choice="auto", **kwargs
             )
 
@@ -380,7 +412,65 @@ class OpenAIProvider(BaseProvider):
             iterations += 1
 
         logger.warning(f"Max tool iterations ({max_iterations}) reached")
-        assert response is not None  # loop ran at least once
+        assert response is not None
+        return response, history
+
+    async def _complete_with_tools_responses(
+        self,
+        messages: List[Message],
+        tools: List[ToolDefinition],
+        tool_executor: Callable[[ToolCall], Awaitable[ToolResult]],
+        max_iterations: int,
+        **kwargs: Any,
+    ) -> tuple[CompletionResponse, List[Message]]:
+        history = list(messages)
+        instructions, input_items = self._convert_messages_to_responses_input(history)
+
+        iterations = 0
+        response: Optional[CompletionResponse] = None
+
+        while iterations < max_iterations:
+            response = await self._complete_responses(
+                messages=history,
+                tools=tools,
+                tool_choice="auto",
+                input_items=input_items,
+                instructions_override=instructions,
+                **kwargs,
+            )
+
+            history.append(
+                Message.assistant(
+                    content=response.content,
+                    tool_calls=response.tool_calls if response.has_tool_calls else None,
+                )
+            )
+
+            if not response.has_tool_calls:
+                return response, history
+
+            # Re-feed the full raw output (reasoning items + function_call items)
+            # before the function_call_output items. OpenAI requires reasoning
+            # items to accompany the tool outputs they triggered.
+            if response.raw_output:
+                input_items.extend(response.raw_output)
+
+            for tool_call in response.tool_calls:
+                logger.debug(f"Executing tool: {tool_call.name}")
+                result = await tool_executor(tool_call)
+                history.append(result.to_message())
+                input_items.append(
+                    {
+                        "type": "function_call_output",
+                        "call_id": tool_call.id,
+                        "output": result.to_message().content,
+                    }
+                )
+
+            iterations += 1
+
+        logger.warning(f"Max tool iterations ({max_iterations}) reached")
+        assert response is not None
         return response, history
 
 
